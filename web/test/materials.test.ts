@@ -16,7 +16,6 @@ import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { sanitizeMaterialLibrary, libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPatch, matEditPatch, renameReclassified, instantiateMaterial } from "../src/lib/materials.js";
 import { GROUT_DEFAULTS, groutDerivedFields, groutNote, materialKind, showsGroutCalc, showsGroutDeriveAffordance } from "../src/lib/coverage.js";
-import { FLOORING_DEFAULTS } from "../src/lib/canvasConstants.js";
 import { store } from "../src/lib/store.js";
 
 beforeEach(() => {
@@ -468,9 +467,13 @@ test("derive-on-linked-line: the geometry row ambers (presence mismatch) and the
 });
 
 // ── seed aliasing (finding 4): instantiation deep-copies nested grout ───────
+// Was regression-tested against the upstream flooring seed's CT-1 (tile)
+// condition; this fork carries no tile/grout condition in its own seed set,
+// so the fixture is built directly from GROUT_DEFAULTS instead — same shape
+// (kind: "grout", a grout geometry object), same aliasing bug it guards.
 
-test("instantiateMaterial: deep-copies grout so the CT-1 seed's object is never shared into live state", () => {
-  const seedGrout: any = FLOORING_DEFAULTS.find((t: any) => t.finish_tag === "CT-1")!.materials.find((m: any) => m.kind === "grout")!;
+test("instantiateMaterial: deep-copies grout so a seed's grout object is never shared into live state", () => {
+  const seedGrout: any = { name: "Grout", kind: "grout", per: 512, basis: "area", unit: "bag", grout: { ...GROUT_DEFAULTS } };
   const a = instantiateMaterial(seedGrout, "mat_a");
   const b = instantiateMaterial(seedGrout, "mat_b");
   assert.deepEqual(a.grout, seedGrout.grout);

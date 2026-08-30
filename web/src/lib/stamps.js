@@ -143,29 +143,30 @@ export function markupToStampElement(m) {
   return null;
 }
 
-// Starter flooring shop-drawing stamps, seeded on an empty library (the
-// FLOORING_DEFAULTS precedent for conditions). Offsets are fractions of sheet
-// width/height; ids are stable so re-seeding is idempotent. Kept deliberately
-// minimal — three genuinely flooring-specific directional marks. Everything
-// else comes from SVG import or Save-as-stamp, so the library carries no
-// decorative title-block art (north arrows, approval stamps, generic bubbles).
+// Starter electrical shop-drawing stamps, seeded on an empty library (the
+// ELECTRICAL_DEFAULTS precedent for conditions, canvasConstants.js). Offsets
+// are fractions of sheet width/height; ids are stable so re-seeding is
+// idempotent. Kept deliberately minimal — three genuinely electrical
+// directional marks. Everything else comes from SVG import or Save-as-stamp,
+// so the library carries no decorative title-block art (north arrows,
+// approval stamps, generic bubbles).
 export const DEFAULT_STAMPS = [
-  { id: "stmp-direction", name: "Plank / tile direction", elements: [
+  { id: "stmp-homerun", name: "Home run (to panel)", elements: [
     { type: "arrow", from: [-0.05, 0], to: [0.05, 0], color: "#1f3fc7", weight: 1.5 },
   ] },
-  { id: "stmp-seam", name: "Seam direction", elements: [
+  { id: "stmp-feed", name: "Feed direction", elements: [
     { type: "arrow", from: [-0.05, 0], to: [0.05, 0], color: "#b03a26", line_style: "dashed" },
   ] },
-  { id: "stmp-origin", name: "Pattern origin", elements: [
-    { type: "bubble", at: [0, 0], r: 0.018, text: "PO", color: "#0d9488" },
+  { id: "stmp-circuit-origin", name: "Circuit numbering origin", elements: [
+    { type: "bubble", at: [0, 0], r: 0.018, text: "CKT", color: "#0d9488" },
   ] },
 ];
 export const DEFAULT_STAMP_SETS = [
-  { id: "set-flooring", name: "Flooring shop drawings", stampIds: DEFAULT_STAMPS.map((s) => s.id) },
+  { id: "set-electrical", name: "Electrical shop drawings", stampIds: DEFAULT_STAMPS.map((s) => s.id) },
 ];
 
 // Fresh-library seeding: a library with stamps is left alone; only a truly
-// empty one gets the flooring defaults (the seedConditions precedent). Returns
+// empty one gets the electrical defaults (the seedConditions precedent). Returns
 // a deep clone so the module constants can never be mutated by a caller edit.
 export function seedStampLibrary(lib) {
   const clean = sanitizeStampLibrary(lib);

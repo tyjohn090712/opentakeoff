@@ -1,11 +1,10 @@
 // Pure data constants for the Takeoff Canvas — render/zoom budgets, snap
-// tuning, toolbar tool descriptors, and the flooring starter conditions.
+// tuning, toolbar tool descriptors, and the electrical starter conditions.
 // No DOM, no React, no functions: values only, moved verbatim from
 // pages/TakeoffCanvas.jsx so the canvas and any future reader share one copy.
-// (The one import is another values-only constant: the grout tile-geometry
-// defaults from lib/coverage.js, so the CT-1 seed and the editor can't drift.)
-
-import { GROUT_DEFAULTS } from "./coverage.js";
+// (This fork is electrical-only — the upstream flooring seed set, its grout
+// tile-geometry import, and roll-goods setup have been dropped rather than
+// kept generic. See docs/ELECTRICAL_FORK.md.)
 
 export const MIN_SCALE = 0.03;
 export const MAX_SCALE = 32;  // stage zoom is in raster px — with the 28MP base budget this keeps ≈ the old deep-zoom ceiling (detail view carries the crispness)
@@ -86,41 +85,49 @@ export const MARKUP_IDS = MARKUP_TOOLS.map((t) => t.id);
 export const HL_INKS = ["#ffd60a", "#ff9f0a", "#34c759", "#3fa9ff", "#ff6ea8"];
 export const HL_SIZES = [["F", 8], ["M", 14], ["B", 22]];   // screen px at draw time
 
-// Flooring-first starter conditions seeded on a fresh workspace — line color +
-// hatch chosen to read like the real finish; waste % is a sensible default you
-// can change per condition (it's never auto-applied to the live readout, only
-// the Report). Delete any you don't need.
-// Each default also carries a couple of editable starter materials — quantities
-// derive deterministically from measured area/linear ÷ a coverage rate you set
-// (off the product data sheet). Delete/edit freely; they're just sensible seeds.
-// Per-material-kind coverage presets (adhesive trowel notches, mortar trowels)
-// and the grout-from-tile-geometry calculator live in lib/coverage.js —
-// vendor-neutral, generic rates; always verify against the product data sheet.
+// Electrical starter conditions seeded on a fresh workspace — line color +
+// hatch chosen so a condition reads at a glance; waste % is a sensible
+// default you can change per condition (it's never auto-applied to the live
+// readout, only the Report). Delete/edit any you don't need — these are
+// starting points against Prime's Accubid systems list, not a fixed taxonomy.
+//
+// Two condition shapes are in play, same as upstream flooring — only the
+// domain changed:
+//   - COUNT conditions (place_count / symbol_sweep shapes): devices, fixtures,
+//     panels. materials use basis "count" — qty = device count ÷ per, rounded
+//     up (e.g. 1 box per device).
+//   - LINEAR conditions (measure_line shapes): raceway/branch-circuit runs.
+//     materials use basis "linear" — qty = raceway LF ÷ per, rounded up.
+//     Conductor footage is NOT a materials line — it's the condition's own
+//     ×N multiplier (README: "waste %, an ×N multiplier"). instantiateTemplate
+//     always seeds multiplier: 1; set it per instance to the circuit's
+//     conductor count (e.g. 3 for a 20A/1P home run: hot + neutral + ground)
+//     and the report's LF, LF-net, and every linear-basis material line all
+//     scale with it automatically (totals.js conditionTotals: lf *= mult
+//     happens before basisVal is read) — no separate wire-footage tool needed
+//     for the Wave-3.1 (raceway-as-linear-condition) pass.
+//
 // Expressed in TEMPLATE shape (finish_tag/waste_pct/materials, no fill — it
 // defaults from color) so seeding and the Library run the same constructor.
-export const FLOORING_DEFAULTS = [
-  { finish_tag: "CPT-1", color: "#2f7d54", hatch: "speckle", waste_pct: 5,  materials: [{ name: "Adhesive", kind: "adhesive", per: 250, basis: "area", unit: "gal" }] },                  // Carpet tile
-  { finish_tag: "BRD-1", color: "#be185d", hatch: "dots",    waste_pct: 10, materials: [{ name: "Adhesive", kind: "adhesive", per: 120, basis: "area", unit: "gal" }] },                  // Broadloom carpet (roll goods)
-  { finish_tag: "LVT-1", color: "#b8860b", hatch: "plank",   waste_pct: 8,  materials: [{ name: "Adhesive", kind: "adhesive", per: 250, basis: "area", unit: "gal" }] },                  // Luxury vinyl plank/tile
-  { finish_tag: "WD-1",  color: "#9a3412", hatch: "plank",   waste_pct: 10, materials: [                                                                                                  // Unfinished 2.25″ solid red oak — glue-down + site-finished
-    { name: "Adhesive (wood, SMP)",     kind: "adhesive", per: 50,  basis: "area", unit: "gal", note: "1/4″×1/4″ V (wood)" },
-    { name: "Sealer (primer coat)",     per: 400, basis: "area", unit: "gal", note: "1 prime coat (~10 m²/L)" },
-    { name: "Polyurethane (2K finish)", per: 136, basis: "area", unit: "gal", note: "≈3 coats @ ~408 SF/gal/coat (2K 10:1)" },
+export const ELECTRICAL_DEFAULTS = [
+  { finish_tag: "REC-20",    color: "#2563eb", hatch: "dots",      waste_pct: 0, materials: [                                            // Duplex receptacle, 20A/1P general use
+    { name: "Single-gang device box", per: 1, basis: "count", unit: "ea" },
+    { name: "Device plate",           per: 1, basis: "count", unit: "ea" },
   ] },
-  { finish_tag: "VCT-1", color: "#2563eb", hatch: "checker", waste_pct: 5,  materials: [{ name: "Adhesive", kind: "adhesive", per: 350, basis: "area", unit: "gal" }] },                  // Vinyl composition tile
-  { finish_tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste_pct: 10, materials: [                                                                                                  // Sheet vinyl
-    { name: "Adhesive", kind: "adhesive", per: 150, basis: "area", unit: "gal" },
-    // Seam welding is figured off the ROLL LAYOUT, never off a share of the
-    // perimeter: basis "seam_lf" is the length where two cuts meet on the
-    // floor (lib/rollgoods.js seamLfBySrc). It reads 0 until the condition
-    // carries a roll setup — which is the honest answer, since nothing has
-    // decided yet how the sheet gets cut.
-    { name: "Heat-weld rod", per: 1, basis: "seam_lf", unit: "lf", note: "runs the figured seams — set the roll width on this condition" },
+  { finish_tag: "REC-GFCI",  color: "#0d9488", hatch: "honeycomb", waste_pct: 0, materials: [                                            // GFCI receptacle, 20A/1P
+    { name: "Single-gang device box", per: 1, basis: "count", unit: "ea" },
+    { name: "GFCI device plate",      per: 1, basis: "count", unit: "ea" },
   ] },
-  { finish_tag: "CT-1",  color: "#9333ea", hatch: "grid",    waste_pct: 10, materials: [                                                                                                  // Ceramic / porcelain tile
-    { name: "Thinset mortar", kind: "mortar", per: 65, basis: "area", unit: "bag", note: '1/4″×3/8″×1/4″ sq' },
-    { name: "Grout", kind: "grout", per: 512, basis: "area", unit: "bag", grout: { ...GROUT_DEFAULTS }, note: '12×24×3/8″ @ 1/8″ · 25 lb' },
+  { finish_tag: "SW-1P",     color: "#9333ea", hatch: "plus",      waste_pct: 0, materials: [{ name: "Single-gang device box", per: 1, basis: "count", unit: "ea" }, { name: "Switch plate", per: 1, basis: "count", unit: "ea" }] },  // Single-pole switch
+  { finish_tag: "SW-3W",     color: "#be185d", hatch: "cross",     waste_pct: 0, materials: [{ name: "Single-gang device box", per: 1, basis: "count", unit: "ea" }, { name: "Switch plate", per: 1, basis: "count", unit: "ea" }] },  // 3-way switch
+  { finish_tag: "DATA-1",    color: "#0891b2", hatch: "scan",      waste_pct: 0, materials: [{ name: "Low-voltage mounting bracket", per: 1, basis: "count", unit: "ea" }] },                                                          // Data/voice outlet (RJ45)
+  { finish_tag: "LT-2X4",    color: "#b8860b", hatch: "grid",      waste_pct: 0, materials: [] },                                                                                                                                       // 2×4 LED troffer — fixture cost usually rides the schedule, not a coverage material
+  { finish_tag: "LT-STRIP",  color: "#dc2626", hatch: "horiz",     waste_pct: 5, materials: [                                            // Linear/strip LED — a LINEAR condition, traced as a run
+    { name: "Whips/connectors", per: 8, basis: "linear", unit: "ea", note: "placeholder ~1 per 8 LF run — verify against the fixture's own connection spec" },
   ] },
-  { finish_tag: "RB-1",  color: "#475569", hatch: "horiz",   waste_pct: 5,  materials: [{ name: "Cove base adhesive", kind: "adhesive", per: 40, basis: "linear", unit: "tube" }] },      // Rubber / resilient wall base (linear)
-  { finish_tag: "TR-1",  color: "#c96442", hatch: "vert",    waste_pct: 0,  materials: [] },                                                                                              // Transitions / reducers (linear)
+  { finish_tag: "PNL",       color: "#1f2937", hatch: "solid",     waste_pct: 0, materials: [] },                                                                                                                                       // Panelboard / equipment placement — a COUNT condition
+  { finish_tag: "EMT-BRANCH", color: "#c96442", hatch: "circuit",  waste_pct: 5, materials: [                                            // Branch-circuit raceway (EMT) — a LINEAR condition; set the condition's ×N multiplier to the run's conductor count
+    { name: "THHN conductor",       kind: "conductor", per: 1,  basis: "linear", unit: "lf", note: "qty scales with the condition's ×N multiplier — see comment above" },
+    { name: "EMT couplings/straps", per: 10, basis: "linear", unit: "ea", note: "placeholder rate — verify against your take-off standard" },
+  ] },
 ];

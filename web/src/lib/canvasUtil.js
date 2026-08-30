@@ -13,7 +13,7 @@ import { PALETTE } from "../components/hatches.jsx";
 import {
   MIN_SCALE, MAX_SCALE,
   QUALITY_CEILING, MAX_CANVAS_DIM, MAX_PANEL_AREA,
-  FLOORING_DEFAULTS,
+  ELECTRICAL_DEFAULTS,
 } from "./canvasConstants.js";
 
 // Largest pdf.js render scale a wPt×hPt-point page can use within the base budget;
@@ -70,6 +70,6 @@ export const instantiateTemplate = (t) => ({
   materials: (t.materials || []).map((m) => instantiateMaterial(m, uid("mat"))),
 });
 // Fresh-workspace seeding reads the user's template library first; the
-// built-in flooring defaults are only the empty-library fallback. Both paths
+// built-in electrical defaults are only the empty-library fallback. Both paths
 // run instantiateTemplate — ONE condition constructor, no drift.
-export const seedConditions = (library) => (library?.length ? library : FLOORING_DEFAULTS).map(instantiateTemplate);
+export const seedConditions = (library) => (library?.length ? library : ELECTRICAL_DEFAULTS).map(instantiateTemplate);
