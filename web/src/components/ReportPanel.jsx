@@ -25,6 +25,7 @@ import { activeTheme, saveActiveThemeFile, clearActiveTheme } from "../lib/repor
 import { normalizeLogoToPng, loadProfiles, saveProfiles, activeProfile, updateActiveProfile, addProfile, setActiveProfile, removeProfile } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection, saveBrandingSelection } from "../lib/branding.js";
 import { projectIdFromUrl } from "../lib/store.js";
+import { mintDocument, mintBreakout, sanitizeRfpInfo, RFP_DOC_CAP, RFP_BREAKOUT_CAP } from "../lib/rfpInfo.js";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
@@ -46,7 +47,7 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, rfpInfo, onRfpInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
   // imported report theme → { vars, name, warnings }. vars are spread onto this
@@ -428,7 +429,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
           className="field-input" style={{ width: 260, padding: "5px 9px", fontSize: 13 }} />
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={() => setShowInfo(true)}
-          title="Your company identity and the client/job details for the print header and marked-set cover">Project info</button>
+          title="Your company identity, client/job details, and the RFP breakdown — governing documents, bid breakouts, estimate and takeoff duration">Project info</button>
         {/* always rendered, even with zero custom columns — Sheet grouping
             is useful on its own */}
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap" }}
@@ -937,7 +938,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         <ContributeModal conditions={conditions} shapes={shapes} scaleInfo={scaleInfo} provenanceCounters={provenanceCounters} onClose={() => setShowContribute(false)} />
       )}
       {showInfo && (
-        <ProjectInfoModal clientInfo={clientInfo} onClientInfo={onClientInfo}
+        <ProjectInfoModal clientInfo={clientInfo} onClientInfo={onClientInfo} rfpInfo={rfpInfo} onRfpInfo={onRfpInfo}
           onSaved={() => setIdentityRev((r) => r + 1)} onClose={() => setShowInfo(false)} />
       )}
     </div>
@@ -948,7 +949,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
 // localStorage), client/job fields are per-project (onClientInfo → autosave).
 // Company edits save on every change, so an overlay-click close loses nothing;
 // onSaved bumps identityRev so the print masthead re-reads immediately.
-function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
+function ProjectInfoModal({ clientInfo = {}, onClientInfo, rfpInfo, onRfpInfo, onSaved, onClose }) {
   // trade-name profiles: the picker chooses which trade name is active for
   // EDITING; the active one still mirrors to the legacy company key (backward
   // compat). Which trade name BRANDS a project is the separate per-project
@@ -1026,6 +1027,21 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
   // bump the seq so an in-flight pick can't resurrect the removed logo; "" clears
   const removeLogo = () => { logoSeq.current++; editActive({ logo: "" }); };
   const client = (field) => (e) => onClientInfo && onClientInfo({ ...clientInfo, [field]: e.target.value });
+
+  // RFP breakdown — defensively defaulted (sanitizeRfpInfo(undefined) returns
+  // the canonical empty-but-complete shape) so this section renders correctly
+  // even if a caller hasn't started passing rfpInfo yet.
+  const rfp = rfpInfo || sanitizeRfpInfo();
+  const setRfp = (patch) => onRfpInfo && onRfpInfo({ ...rfp, ...patch });
+  const rfpField = (field) => (e) => setRfp({ [field]: e.target.value });
+  const addDoc = () => rfp.documents.length < RFP_DOC_CAP && setRfp({ documents: [...rfp.documents, mintDocument()] });
+  const setDoc = (id, patch) => setRfp({ documents: rfp.documents.map((d) => (d.id === id ? { ...d, ...patch } : d)) });
+  const removeDoc = (id) => setRfp({ documents: rfp.documents.filter((d) => d.id !== id) });
+  const addBreakout = () => rfp.bid_breakouts.length < RFP_BREAKOUT_CAP && setRfp({ bid_breakouts: [...rfp.bid_breakouts, mintBreakout()] });
+  const setBreakout = (id, patch) => setRfp({ bid_breakouts: rfp.bid_breakouts.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
+  const removeBreakout = (id) => setRfp({ bid_breakouts: rfp.bid_breakouts.filter((b) => b.id !== id) });
+  const rfpRowBtn = { border: "none", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 14, padding: "0 4px", lineHeight: 1 };
+  const rfpAddBtn = { padding: "4px 10px", border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, marginTop: 2 };
 
   const section = { fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" };
   const row = { display: "block", margin: "8px 0" };
@@ -1129,6 +1145,72 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
                 className="field-input" style={{ marginTop: 4 }} />
             </label>
           </div>
+
+          {/* RFP breakdown — read the bid package once, park the answers here:
+              which documents actually move price, how the bid is broken out,
+              and how many work days the estimate (and the on-screen takeoff
+              inside it) is expected to take. Saved with this project like
+              client/job, above. */}
+          <div style={{ ...section, borderTop: "1px solid var(--ink-faint)", marginTop: 14, paddingTop: 12 }}>RFP breakdown — saved with this project</div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <label style={{ ...row, flex: 1 }}>
+              <span className="field-label">Bid due</span>
+              <input name="rfp-bid-due" autoComplete="off" value={rfp.bid_due_date} onChange={rfpField("bid_due_date")} placeholder={'e.g. "8/14, 2pm"'}
+                className="field-input" style={{ marginTop: 4 }} />
+            </label>
+            <label style={{ ...row, flex: 1 }}>
+              <span className="field-label">Estimate duration (work days)</span>
+              <input name="rfp-estimate-days" type="number" min="0" step="0.5" autoComplete="off" value={rfp.estimate_duration_days}
+                onChange={rfpField("estimate_duration_days")} placeholder="e.g. 5" className="field-input" style={{ marginTop: 4 }} />
+            </label>
+            <label style={{ ...row, flex: 1 }}>
+              <span className="field-label">On-screen takeoff (work days)</span>
+              <input name="rfp-takeoff-days" type="number" min="0" step="0.5" autoComplete="off" value={rfp.takeoff_duration_days}
+                onChange={rfpField("takeoff_duration_days")} placeholder="e.g. 2" className="field-input" style={{ marginTop: 4 }} />
+            </label>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <span className="field-label">Documents that drive pricing</span>
+            <div style={{ fontSize: 11, color: "var(--ink-muted)", margin: "2px 0 6px" }}>
+              Every document in the bid package matters — these are the ones that change the number: addenda, spec sections, panel schedules, RFI responses.
+            </div>
+            {rfp.documents.map((d) => (
+              <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 6, margin: "4px 0" }}>
+                <input type="checkbox" checked={d.drives_pricing} onChange={(e) => setDoc(d.id, { drives_pricing: e.target.checked })}
+                  title="Drives pricing" />
+                <input value={d.name} onChange={(e) => setDoc(d.id, { name: e.target.value })} placeholder="Document — e.g. Addendum 3, Spec 26 0000"
+                  className="field-input" style={{ flex: 1, minWidth: 0 }} />
+                <input value={d.note} onChange={(e) => setDoc(d.id, { note: e.target.value })} placeholder="Note (optional)"
+                  className="field-input" style={{ flex: 1, minWidth: 0 }} />
+                <button onClick={() => removeDoc(d.id)} title="Remove" style={rfpRowBtn}>×</button>
+              </div>
+            ))}
+            {rfp.documents.length < RFP_DOC_CAP && <button onClick={addDoc} style={rfpAddBtn}>+ Add document</button>}
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <span className="field-label">Bid breakouts</span>
+            <div style={{ fontSize: 11, color: "var(--ink-muted)", margin: "2px 0 6px" }}>
+              Base bid, alternates, unit prices, allowances — however this bid must be split out on the proposal.
+            </div>
+            {rfp.bid_breakouts.map((b) => (
+              <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 6, margin: "4px 0" }}>
+                <input value={b.label} onChange={(e) => setBreakout(b.id, { label: e.target.value })} placeholder="Breakout — e.g. Base Bid, Alt 1"
+                  className="field-input" style={{ flex: 1, minWidth: 0 }} />
+                <input value={b.note} onChange={(e) => setBreakout(b.id, { note: e.target.value })} placeholder="Note (optional)"
+                  className="field-input" style={{ flex: 1, minWidth: 0 }} />
+                <button onClick={() => removeBreakout(b.id)} title="Remove" style={rfpRowBtn}>×</button>
+              </div>
+            ))}
+            {rfp.bid_breakouts.length < RFP_BREAKOUT_CAP && <button onClick={addBreakout} style={rfpAddBtn}>+ Add breakout</button>}
+          </div>
+
+          <label style={{ ...row, marginTop: 12 }}>
+            <span className="field-label">RFP notes</span>
+            <textarea name="rfp-notes" value={rfp.notes} onChange={rfpField("notes")} rows={2} placeholder="Scope clarifications, exclusions, anything else worth flagging before pricing"
+              className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
+          </label>
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px", borderTop: "1px solid var(--ink-faint)" }}>
           <button className="btn-primary" onClick={onClose}>Done</button>
