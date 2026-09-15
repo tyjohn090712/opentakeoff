@@ -162,10 +162,10 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "create_condition",
-    description: "Create a new takeoff condition for a finish tag (e.g. CPT-1) when no existing condition matches. Returns its condition_id.",
+    description: "Create a new takeoff condition for a finish tag (e.g. REC-20) when no existing condition matches. Returns its condition_id.",
     input_schema: {
       type: "object",
-      properties: { finish_tag: { type: "string", description: "Finish code, e.g. LVT-1." } },
+      properties: { finish_tag: { type: "string", description: "Finish code, e.g. SW-1P." } },
       required: ["finish_tag"],
     },
   },

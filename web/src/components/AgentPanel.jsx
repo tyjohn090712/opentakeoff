@@ -21,6 +21,20 @@ const evidenceText = (ev) => {
 
 const LOG_STYLE = { status: "var(--ink-muted)", tool: "var(--cobalt)", text: "var(--ink)", error: "var(--c-danger)" };
 
+// The division of labor, stated once and kept visible — not just in the
+// empty state. The agent reads/measures/proposes; the estimator scopes,
+// judges, and decides. Nothing here changes at runtime, so it's a plain
+// static strip, not a prop-driven component.
+function RoleSplit() {
+  const box = { fontSize: 11, lineHeight: 1.5, padding: "7px 9px", background: "var(--paper-shadow)", border: "1px solid var(--ink-faint)" };
+  return (
+    <div style={box}>
+      <div><strong>You:</strong> set the goal, review every proposal, accept or reject, price and finalize the bid.</div>
+      <div><strong>Agent:</strong> reads schedules and plan text, measures rooms, stages cited proposals — never invents geometry, never commits, never prices.</div>
+    </div>
+  );
+}
+
 export default function AgentPanel({
   configured, running, log, proposals, condById, sheetLabel, units,
   fmtArea, onRun, onStop, onAccept, onReject, onAcceptAll, onRejectAll,
@@ -52,8 +66,9 @@ export default function AgentPanel({
             The agent runs on a model <strong>you</strong> provide — your endpoint, your key, straight from this
             browser (the same bring-your-own-AI seam as the scale reader). Nothing is configured, so it can't run.
           </p>
+          <RoleSplit />
           <p style={{ color: "var(--ink-muted)" }}>
-            Once configured, you describe a takeoff ("take off the carpet per the finish schedule on this sheet")
+            Once configured, you describe a takeoff ("take off the receptacle count per the power plan on this sheet")
             and the agent aims the app's own tools — the text layer, the schedule parser, the one-click engine —
             then stages dashed proposals you accept or reject. It never invents geometry and never commits anything itself.
           </p>
@@ -63,9 +78,10 @@ export default function AgentPanel({
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {/* goal + run */}
           <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
+            <div style={{ marginBottom: 8 }}><RoleSplit /></div>
             <textarea
               name="agent-goal" value={goal} onChange={(e) => setGoal(e.target.value)} rows={3}
-              placeholder={'e.g. "Take off the carpet per the finish schedule on this sheet."'}
+              placeholder={'e.g. "Take off the receptacle count per the power plan on this sheet."'}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); run(); } }}
               style={{ width: "100%", boxSizing: "border-box", resize: "vertical", fontSize: 12.5, fontFamily: "inherit", padding: "6px 8px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", color: "var(--ink)", outline: "none" }}
             />
