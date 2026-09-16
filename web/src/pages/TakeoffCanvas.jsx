@@ -5954,15 +5954,44 @@ export default function TakeoffCanvas() {
     };
   }
 
+  // Symbol Sweep at an agent-supplied marquee — the SAME deterministic engine
+  // runSymbolSweep runs for a human's Symbol tool drag, returning matches and
+  // withheld near-misses as normalized centroids WITHOUT touching the
+  // interactive sweep-review state or committing anything: staging happens at
+  // the accept gate below, exactly like agentOneClickProbe. No scale gate —
+  // sweepSymbols works in sheet px regardless of whether the sheet is
+  // calibrated (a device count doesn't need real-world units).
+  async function agentSweepSymbol(key, region) {
+    const p = agentPanelFor(key);
+    if (!p) return { error: `Sheet ${key} isn't rendered yet — try again in a moment.` };
+    const segs = vectorSegsRef.current.get(key);
+    if (!segs || !segs.length) return { error: `Sheet ${key} has no vector linework (likely a scan) — Symbol Sweep reads drawn segments.` };
+    const rect = [[region.x0 * p.img.w, region.y0 * p.img.h], [region.x1 * p.img.w, region.y1 * p.img.h]];
+    const lum = segLumRef.current.get(key);
+    let res;
+    try {
+      res = sweepSymbols(segs, rect, lum ? { lum } : {});
+    } catch (e) {
+      // the engine's refusals (empty marquee, region-sized marquee) are
+      // instructions, exactly as the human Symbol tool surfaces them
+      return { error: String((e && e.message) || e) };
+    }
+    const norm = ([x, y]) => [+(x / p.img.w).toFixed(5), +(y / p.img.h).toFixed(5)];
+    return {
+      seed: { segments: res.seed.segments, at_norm: norm(res.seed.center) },
+      matches: res.matches.map((m) => ({ at_norm: norm(m.at), score: +m.score.toFixed(3), rotation: m.rotation, mirrored: m.mirrored })),
+      withheld: res.withheld.map((w) => ({ at_norm: norm(w.at), score: +w.score.toFixed(3), reason: w.reason })),
+      complete: res.complete, dropped: res.candidates.dropped,
+    };
+  }
+
   // Stage already-whitelisted proposals (the registry validated + whitelisted
   // evidence before calling this). area/perim computed here for the review UI;
   // the accept gate recomputes fresh in case the estimator recalibrates first.
   function stageAgentProposals(shapes) {
     const staged = shapes.map((s) => {
-      const p = agentPanelFor(s.sheet);
-      const upp = agentUpp(s.sheet) || 0;
-      const ringPx = s.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
-      return {
+      const isCount = s.measure_role === "count";
+      const base = {
         id: `agp-${mintUuid()}`,
         sheet_id: s.sheet,
         condition_id: s.condition_id,
@@ -5971,9 +6000,16 @@ export default function TakeoffCanvas() {
         evidence: s.evidence,
         ...(Array.isArray(s.evidence.seed_norm) ? { seed_norm: s.evidence.seed_norm } : {}),
         proposed_ts: nowIso(),
-        area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2),
-        perim_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2),
       };
+      // count proposals are a single device location, not a ring — area/perim
+      // are meaningless for them (and unpriced by scale until accept, same as
+      // the manual Count tool), so skip that math entirely rather than feed
+      // ringArea a 1-point "ring".
+      if (isCount) return base;
+      const p = agentPanelFor(s.sheet);
+      const upp = agentUpp(s.sheet) || 0;
+      const ringPx = s.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+      return { ...base, area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perim_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) };
     });
     setAgentProposals((ps) => [...ps, ...staged]);
     return { staged: staged.length };
@@ -5996,6 +6032,7 @@ export default function TakeoffCanvas() {
       readSchedule: agentReadSchedule,
       viewRegion: agentViewRegion,
       oneClick: agentOneClickProbe,
+      sweepSymbol: agentSweepSymbol,
       getConditions: () => agentStateRef.current.conditions.map((c) => ({ id: c.id, finish_tag: c.finish_tag, hatch: c.hatch, waste_pct: c.waste_pct })),
       createCondition: (tag) => { const c = mintCondition(tag); return { id: c.id, finish_tag: c.finish_tag }; },
       proposeShapes: stageAgentProposals,
@@ -6267,13 +6304,17 @@ export default function TakeoffCanvas() {
     let skippedClosed = 0;
     for (const pr of take) {
       const tp = panels.find((x) => x.key === pr.sheet_id && x.img.w);
-      const upp = uppFor(pr.sheet_id);
-      if (!tp || !upp || !condById[pr.condition_id]) { skippedClosed++; continue; }
+      const isCount = pr.measure_role === "count";
+      // count needs no scale — same rule stageAgentProposals and the manual
+      // Count/Symbol Sweep tools already follow (a device is 1 EA regardless
+      // of calibration); floor_area/deduct still need upp to price at accept.
+      const upp = isCount ? null : uppFor(pr.sheet_id);
+      if (!tp || (!isCount && !upp) || !condById[pr.condition_id]) { skippedClosed++; continue; }
       const ringPx = pr.verts_norm.map(([x, y]) => [x * tp.img.w, y * tp.img.h]);
       made.push({
         sheet_id: pr.sheet_id, condition_id: pr.condition_id, measure_role: pr.measure_role,
         verts_norm: pr.verts_norm.map((v) => [...v]),
-        computed: { area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perimeter_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) },
+        computed: isCount ? { count: 1 } : { area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perimeter_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) },
         origin: {
           method: "agent_v1", actor: "agent", reviewed: true,
           proposed_ts: pr.proposed_ts, accepted_ts: nowIso(),

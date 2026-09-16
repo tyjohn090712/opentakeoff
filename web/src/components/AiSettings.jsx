@@ -30,9 +30,9 @@ export default function AiSettings({ onClose }) {
           </p>
           <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--ink-muted)" }}>
             This one key powers two surfaces: the scale reader (reads a drawn scale off a region you point at) and
-            the in-canvas <strong>Agent</strong> (reads schedules and plan text, measures rooms, and stages proposals
-            for you to review). Either way, it only ever reads and proposes — pricing, scope, and every committed
-            takeoff stay decisions <strong>you</strong> make.
+            the in-canvas <strong>Agent</strong> (reads schedules and plan text, measures rooms, sweeps repeated
+            device symbols to count them, and stages proposals for you to review). Either way, it only ever reads
+            and proposes — pricing, scope, and every committed takeoff stay decisions <strong>you</strong> make.
           </p>
           <label style={{ display: "block", margin: "6px 0" }}>
             <span className="field-label">Endpoint</span>

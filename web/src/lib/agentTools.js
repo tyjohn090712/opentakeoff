@@ -27,6 +27,7 @@
 //   readSchedule(sheet, region): Promise<ScheduleRow[]>
 //   viewRegion(sheet, region): Promise<{ image_data_url, width, height }>
 //   oneClick(sheet, x, y): Promise<{ verts_norm, area_sf, perimeter_lf, ... } | { error }>
+//   sweepSymbol(sheet, region): Promise<{ seed, matches, withheld, complete, dropped } | { error }>
 //   getConditions(): [{ id, finish_tag, ... }]
 //   createCondition(finish_tag): { id, finish_tag }
 //   proposeShapes(shapes): { staged }   // already-whitelisted proposals
@@ -156,6 +157,18 @@ export const AGENT_TOOL_DEFS = [
     },
   },
   {
+    name: "sweep_symbol",
+    description: "Given a marquee region around ONE example instance of a repeated device/fixture symbol (a receptacle, a switch, a light fixture, a panel — anything stamped the same way across the sheet), find every other placement of that same symbol via deterministic vector pattern-matching: no vision, no guessing — a placement either reproduces the seed's linework within tolerance or it doesn't. Returns the seed's own location, confident matches, and withheld near-misses (borderline scores — real questions for the estimator, never silently dropped or silently counted), all as normalized centroids. This is how you count devices — never invent a count yourself, and never count from a screenshot.",
+    input_schema: {
+      type: "object",
+      properties: {
+        sheet: { type: "string" },
+        region: { ...REGION_SCHEMA, description: "Marquee tightly around ONE instance of the symbol — not the whole sheet." },
+      },
+      required: ["sheet", "region"],
+    },
+  },
+  {
     name: "get_conditions",
     description: "List the takeoff conditions (finish tags) that exist in this workspace, with their ids. Proposals must reference an existing condition_id.",
     input_schema: { type: "object", properties: {}, required: [] },
@@ -171,7 +184,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "propose_shapes",
-    description: "Stage takeoff proposals for human review. Each shape needs the sheet, the boundary ring from one_click (verts_norm), a condition_id, a measure_role (floor_area or deduct), and EVIDENCE: the schedule row tag and/or the matched room/finish text token and/or the one_click seed. Proposals render as dashed pencil outlines the estimator accepts or rejects — nothing you stage is committed.",
+    description: "Stage takeoff proposals for human review. For floor_area/deduct: verts_norm is the boundary ring one_click returned. For count (a discrete device or fixture): verts_norm is a single [[x,y]] point — one placement from sweep_symbol's matches or withheld list. Every shape needs the sheet, a condition_id, and EVIDENCE: the schedule row tag and/or the matched room/finish text token and/or the one_click/sweep_symbol seed. Proposals render as dashed pencil outlines (or count marks) the estimator accepts or rejects — nothing you stage is committed.",
     input_schema: {
       type: "object",
       properties: {
@@ -181,9 +194,9 @@ export const AGENT_TOOL_DEFS = [
             type: "object",
             properties: {
               sheet: { type: "string" },
-              verts_norm: { type: "array", description: "Boundary ring [[x,y],...] normalized 0..1 — use the ring one_click returned." },
+              verts_norm: { type: "array", description: "floor_area/deduct: the ring one_click returned, [[x,y],...]. count: a single device location, [[x,y]] — one point from sweep_symbol." },
               condition_id: { type: "string" },
-              measure_role: { type: "string", description: "floor_area or deduct" },
+              measure_role: { type: "string", description: "floor_area, deduct, or count" },
               evidence: {
                 type: "object",
                 description: "Why this shape: {schedule_row_tag?, matched_text?, seed_norm?}. matched_text is the matched token only (a room tag or schedule cell), never a transcription.",
@@ -212,7 +225,7 @@ const clampRegion = (r) => ({
   y1: Math.max(0, Math.min(1, Math.max(r.y0, r.y1))),
 });
 
-const MEASURE_ROLES = new Set(["floor_area", "deduct"]);
+const MEASURE_ROLES = new Set(["floor_area", "deduct", "count"]);
 
 /**
  * Execute one tool call. NEVER throws — every failure comes back as an
@@ -252,6 +265,10 @@ export async function executeAgentTool(ctx, name, args) {
         if (ctx.uppFor(args.sheet) == null) return { error: agentScaleGate(args.sheet, ctx.detectedLabel(args.sheet)) };
         return await ctx.oneClick(args.sheet, args.x, args.y);
       }
+      case "sweep_symbol": {
+        if (!ctx.sheetDims(args.sheet)) return { error: `Sheet ${args.sheet} isn't open on the canvas — pick one from list_sheets.` };
+        return await ctx.sweepSymbol(args.sheet, clampRegion(args.region));
+      }
       case "get_conditions":
         return { conditions: ctx.getConditions() };
       case "create_condition": {
@@ -269,13 +286,20 @@ export async function executeAgentTool(ctx, name, args) {
         for (const s of args.shapes) {
           const dims = ctx.sheetDims(s.sheet);
           if (!dims) { rejected.push(`sheet ${s.sheet} isn't open`); continue; }
-          if (ctx.uppFor(s.sheet) == null) { rejected.push(agentScaleGate(s.sheet, ctx.detectedLabel(s.sheet))); continue; }
-          if (!MEASURE_ROLES.has(s.measure_role)) { rejected.push(`measure_role must be floor_area or deduct (got ${JSON.stringify(s.measure_role)})`); continue; }
+          // count doesn't need real-world units (a device mark's quantity is
+          // 1 EA regardless of scale) — the same rule the manual Count tool
+          // and Symbol Sweep already follow (commitCount/commitSweep never
+          // check upp). floor_area/deduct still refuse on an uncalibrated sheet.
+          if (s.measure_role !== "count" && ctx.uppFor(s.sheet) == null) { rejected.push(agentScaleGate(s.sheet, ctx.detectedLabel(s.sheet))); continue; }
+          if (!MEASURE_ROLES.has(s.measure_role)) { rejected.push(`measure_role must be floor_area, deduct, or count (got ${JSON.stringify(s.measure_role)})`); continue; }
           if (!condIds.has(s.condition_id)) { rejected.push(`unknown condition_id ${JSON.stringify(s.condition_id)} — use get_conditions or create_condition`); continue; }
           const verts = Array.isArray(s.verts_norm)
             ? s.verts_norm.filter((v) => Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]))
             : [];
-          if (verts.length < 3 || verts.length !== s.verts_norm.length) { rejected.push("verts_norm must be a ring of at least 3 [x,y] points — use the ring one_click returned"); continue; }
+          if (verts.length !== s.verts_norm.length) { rejected.push("verts_norm points must all be finite [x,y] pairs"); continue; }
+          if (s.measure_role === "count") {
+            if (verts.length !== 1) { rejected.push("a count proposal's verts_norm must be exactly one [x,y] point — a single device location from sweep_symbol"); continue; }
+          } else if (verts.length < 3) { rejected.push("verts_norm must be a ring of at least 3 [x,y] points — use the ring one_click returned"); continue; }
           const evidence = pickAgentEvidence(s.evidence);
           if (!evidence) { rejected.push("every proposal must cite evidence: schedule_row_tag and/or matched_text and/or seed_norm"); continue; }
           clean.push({

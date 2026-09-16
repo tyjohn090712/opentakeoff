@@ -22,8 +22,8 @@ Second asset worth knowing up front: `web/src/lib/symbolsweep.ts` — the "mark 
 
 ## Wave 2 — device/fixture counting (mostly configuration, not new engine code)
 
-- No new geometry: `symbol_sweep` already does marquee-one-instance → find-all-instances.
-- Needed: a documented workflow (mark one duplex receptacle → sweep → repeat per device type per sheet), and — check whether swept symbols persist per-session or per-project before assuming — a saved symbol library keyed to the `ELECTRICAL_DEFAULTS` device types.
+- No new geometry: `symbol_sweep` already does marquee-one-instance → find-all-instances. The MCP server already exposed it to an external agent; the gap was the **in-canvas** BYO-AI agent (`web/src/lib/agentTools.js`/`agentLoop.js`), which could only propose areas. **Done**: a `sweep_symbol` tool wired to the same engine (`web/src/lib/symbolsweep.ts`), and `propose_shapes`'s `measure_role` extended with `count` (a single `[[x,y]]` point per device, no scale gate — a count is 1 EA regardless of calibration). Same accept/reject gate as area proposals; `AgentPanel` labels a staged count proposal `(count)`. System prompt and role-split copy updated to describe the workflow: marquee one instance → sweep → stage counts from matches/withheld → estimator accepts. Unit-tested in `web/test/agentTools.test.ts`.
+- Still needed: a documented user-facing workflow write-up (mark one duplex receptacle → sweep → repeat per device type per sheet) in `docs/AGENT_GUIDE.md`/`docs/USER_GUIDE.md`, and — check whether swept symbols persist per-session or per-project before assuming — a saved symbol library keyed to the `ELECTRICAL_DEFAULTS` device types.
 - `sweep_schedule_row` ties a swept count to a schedule row — the bridge to Wave 4 (a fixture/panel schedule instead of a finish schedule).
 
 ## Wave 3 — circuit / raceway takeoff (the real new work)
