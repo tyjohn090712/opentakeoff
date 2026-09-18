@@ -15,7 +15,7 @@ import {
 // A canvas-shaped capability stub. Every mutation is recorded so the tests can
 // assert what executed — and, for the probe tools, what did NOT.
 function makeCtx(overrides: Record<string, unknown> = {}) {
-  const calls: Record<string, unknown[]> = { proposeShapes: [], createCondition: [], oneClick: [] };
+  const calls: Record<string, unknown[]> = { proposeShapes: [], createCondition: [], oneClick: [], sweepSymbol: [], measureLine: [] };
   const ctx = {
     listSheets: () => [{ sheet: "plan.pdf", title: "A101", width: 2000, height: 1500, scale_set: true }],
     sheetDims: (k: string) => (k === "plan.pdf" ? { w: 2000, h: 1500 } : null),
@@ -28,6 +28,19 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
       calls.oneClick.push([sheet, x, y]);
       return { verts_norm: [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3], [0.1, 0.3]], area_sf: 200, perimeter_lf: 60, seed_norm: [x, y] };
     },
+    sweepSymbol: async (sheet: string, region: unknown) => {
+      calls.sweepSymbol.push([sheet, region]);
+      return {
+        seed: { segments: 6, at_norm: [0.2, 0.2] },
+        matches: [{ at_norm: [0.4, 0.2], score: 0.98, rotation: 0, mirrored: false }, { at_norm: [0.6, 0.2], score: 0.95, rotation: 90, mirrored: false }],
+        withheld: [{ at_norm: [0.8, 0.2], score: 0.8, reason: "near-miss" }],
+        complete: true, dropped: 0,
+      };
+    },
+    measureLine: async (sheet: string, pts: unknown[]) => {
+      calls.measureLine.push([sheet, pts]);
+      return { length_lf: 42.5, verts_norm: pts };
+    },
     getConditions: () => [{ id: "cnd-1", finish_tag: "CPT-1", hatch: "solid", waste_pct: 5 }],
     createCondition: (tag: string) => { calls.createCondition.push(tag); return { id: `cnd-${tag}`, finish_tag: tag }; },
     proposeShapes: (shapes: unknown[]) => { calls.proposeShapes.push(shapes); return { staged: shapes.length }; },
@@ -37,7 +50,7 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
 }
 
 test("registry: every tool has a name, description, and object schema; names are unique", () => {
-  assert.ok(AGENT_TOOL_DEFS.length >= 8);
+  assert.ok(AGENT_TOOL_DEFS.length >= 10);
   const names = new Set<string>();
   for (const d of AGENT_TOOL_DEFS) {
     assert.ok(d.name && typeof d.name === "string");
@@ -47,7 +60,7 @@ test("registry: every tool has a name, description, and object schema; names are
     assert.ok(!names.has(d.name), `duplicate tool name ${d.name}`);
     names.add(d.name);
   }
-  for (const expected of ["list_sheets", "read_sheet_text", "read_schedule", "view_region", "one_click", "get_conditions", "create_condition", "propose_shapes"]) {
+  for (const expected of ["list_sheets", "read_sheet_text", "read_schedule", "view_region", "one_click", "sweep_symbol", "measure_line", "get_conditions", "create_condition", "propose_shapes"]) {
     assert.ok(names.has(expected), `missing tool ${expected}`);
   }
 });
@@ -92,6 +105,115 @@ test("one_click scale gate: uncalibrated sheet refuses with the shared gate text
   assert.equal(calls.oneClick.length, 0);          // the engine never even ran
 });
 
+test("sweep_symbol probes without mutating anything, and needs no scale", async () => {
+  const { ctx, calls } = makeCtx({ uppFor: () => null });   // uncalibrated — sweep must still run
+  const region = { x0: 0.1, y0: 0.1, x1: 0.2, y1: 0.2 };
+  const out = await executeAgentTool(ctx, "sweep_symbol", { sheet: "plan.pdf", region });
+  assert.equal(out.matches.length, 2);
+  assert.equal(out.withheld.length, 1);
+  assert.equal(out.seed.at_norm[0], 0.2);
+  assert.deepEqual(calls.sweepSymbol, [["plan.pdf", region]]);
+  assert.equal(calls.proposeShapes.length, 0);   // a probe stages NOTHING
+});
+
+test("sweep_symbol on a sheet that isn't open refuses", async () => {
+  const { ctx, calls } = makeCtx();
+  const out = await executeAgentTool(ctx, "sweep_symbol", { sheet: "ghost.pdf", region: { x0: 0, y0: 0, x1: 0.1, y1: 0.1 } });
+  assert.match(out.error, /ghost\.pdf.*isn't open/);
+  assert.equal(calls.sweepSymbol.length, 0);
+});
+
+test("sweep_symbol surfaces the engine's own refusal as an error, never a throw", async () => {
+  const { ctx } = makeCtx({ sweepSymbol: async () => { throw new Error("seed rect holds no segments"); } });
+  const out = await executeAgentTool(ctx, "sweep_symbol", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.01, y1: 0.01 } });
+  assert.match(out.error, /seed rect holds no segments/);
+});
+
+test("measure_line probes without mutating anything", async () => {
+  const { ctx, calls } = makeCtx();
+  const pts = [[0.2, 0.2], [0.4, 0.2], [0.4, 0.5]];
+  const out = await executeAgentTool(ctx, "measure_line", { sheet: "plan.pdf", pts });
+  assert.equal(out.length_lf, 42.5);
+  assert.deepEqual(calls.measureLine, [["plan.pdf", pts]]);
+  assert.equal(calls.proposeShapes.length, 0);
+});
+
+test("measure_line scale gate: uncalibrated sheet refuses, unlike sweep_symbol/count", async () => {
+  const { ctx, calls } = makeCtx({ uppFor: () => null, detectedLabel: () => '1/4" = 1\'-0"' });
+  const out = await executeAgentTool(ctx, "measure_line", { sheet: "plan.pdf", pts: [[0.2, 0.2], [0.4, 0.2]] });
+  assert.equal(out.error, agentScaleGate("plan.pdf", '1/4" = 1\'-0"'));
+  assert.equal(calls.measureLine.length, 0);
+});
+
+test("measure_line rejects fewer than 2 points or a non-finite point", async () => {
+  const { ctx, calls } = makeCtx();
+  const one = await executeAgentTool(ctx, "measure_line", { sheet: "plan.pdf", pts: [[0.2, 0.2]] });
+  assert.match(one.error, /at least 2 finite/);
+  const bad = await executeAgentTool(ctx, "measure_line", { sheet: "plan.pdf", pts: [[0.2, 0.2], [NaN, 0.3]] });
+  assert.match(bad.error, /at least 2 finite/);
+  assert.equal(calls.measureLine.length, 0);
+});
+
+test("propose_shapes: linear is an open polyline (≥2 pts), needs scale unlike count", async () => {
+  const { ctx, calls } = makeCtx();
+  const ev = { schedule_row_tag: "EMT-BRANCH" };
+  const polyline = [[0.2, 0.2], [0.4, 0.2], [0.4, 0.5]];
+  const out = await executeAgentTool(ctx, "propose_shapes", {
+    shapes: [
+      { sheet: "plan.pdf", verts_norm: polyline, condition_id: "cnd-1", measure_role: "linear", evidence: ev },
+      { sheet: "plan.pdf", verts_norm: [[0.2, 0.2]], condition_id: "cnd-1", measure_role: "linear", evidence: ev },   // only 1 point
+    ],
+  });
+  assert.equal(out.staged, 1);
+  assert.equal(out.rejected.length, 1);
+  assert.match(out.rejected[0], /open polyline of at least 2/);
+  const staged = (calls.proposeShapes[0] as Record<string, any>[])[0];
+  assert.equal(staged.measure_role, "linear");
+  assert.deepEqual(staged.verts_norm, polyline);
+});
+
+test("propose_shapes: linear refuses on an uncalibrated sheet, exactly like floor_area", async () => {
+  const { ctx, calls } = makeCtx({ uppFor: () => null, detectedLabel: () => "" });
+  const out = await executeAgentTool(ctx, "propose_shapes", {
+    shapes: [{ sheet: "plan.pdf", verts_norm: [[0.2, 0.2], [0.4, 0.2]], condition_id: "cnd-1", measure_role: "linear", evidence: { matched_text: "run" } }],
+  });
+  assert.equal(out.staged, 0);
+  assert.match(out.rejected[0], /^Set the scale for plan\.pdf first/);
+  assert.equal(calls.proposeShapes.length, 0);
+});
+
+test("propose_shapes: count is a single-point mark, needs no scale, area/deduct still do", async () => {
+  const { ctx, calls } = makeCtx({ uppFor: (k: string) => (k === "plan.pdf" ? null : 0.02) });   // plan.pdf uncalibrated
+  const ev = { schedule_row_tag: "REC-20" };
+  const out = await executeAgentTool(ctx, "propose_shapes", {
+    shapes: [
+      { sheet: "plan.pdf", verts_norm: [[0.4, 0.2]], condition_id: "cnd-1", measure_role: "count", evidence: ev },
+      { sheet: "plan.pdf", verts_norm: [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3]], condition_id: "cnd-1", measure_role: "floor_area", evidence: ev },
+    ],
+  });
+  assert.equal(out.staged, 1);       // the count proposal, despite no scale on plan.pdf
+  assert.equal(out.rejected.length, 1);
+  assert.match(out.rejected[0], /^Set the scale for plan\.pdf first/);   // floor_area still gated
+  const staged = (calls.proposeShapes[0] as Record<string, any>[])[0];
+  assert.equal(staged.measure_role, "count");
+  assert.deepEqual(staged.verts_norm, [[0.4, 0.2]]);
+});
+
+test("propose_shapes: a count with anything but exactly one point is rejected", async () => {
+  const { ctx, calls } = makeCtx();
+  const ev = { matched_text: "REC-20" };
+  const out = await executeAgentTool(ctx, "propose_shapes", {
+    shapes: [
+      { sheet: "plan.pdf", verts_norm: [], condition_id: "cnd-1", measure_role: "count", evidence: ev },
+      { sheet: "plan.pdf", verts_norm: [[0.4, 0.2], [0.5, 0.2]], condition_id: "cnd-1", measure_role: "count", evidence: ev },
+    ],
+  });
+  assert.equal(out.staged, 0);
+  assert.equal(out.rejected.length, 2);
+  for (const r of out.rejected) assert.match(r, /exactly one \[x,y\] point/);
+  assert.equal(calls.proposeShapes.length, 0);
+});
+
 test("propose_shapes: evidence whitelist — junk keys dropped, strings truncated, uncited rejected", async () => {
   const { ctx, calls } = makeCtx();
   const long = "X".repeat(500);
@@ -120,7 +242,7 @@ test("propose_shapes: unknown condition, bad role, degenerate ring, and unscaled
   const out = await executeAgentTool(ctx, "propose_shapes", {
     shapes: [
       { sheet: "plan.pdf", verts_norm: ring, condition_id: "cnd-404", measure_role: "floor_area", evidence: ev },
-      { sheet: "plan.pdf", verts_norm: ring, condition_id: "cnd-1", measure_role: "linear", evidence: ev },
+      { sheet: "plan.pdf", verts_norm: ring, condition_id: "cnd-1", measure_role: "surface_area", evidence: ev },   // not an agent-supported role
       { sheet: "plan.pdf", verts_norm: [[0.1, 0.1], [0.2, 0.2]], condition_id: "cnd-1", measure_role: "floor_area", evidence: ev },
       { sheet: "scan.pdf", verts_norm: ring, condition_id: "cnd-1", measure_role: "floor_area", evidence: ev },   // no scale
       { sheet: "ghost.pdf", verts_norm: ring, condition_id: "cnd-1", measure_role: "floor_area", evidence: ev },  // not open

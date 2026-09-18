@@ -30,7 +30,7 @@ function RoleSplit() {
   return (
     <div style={box}>
       <div><strong>You:</strong> set the goal, review every proposal, accept or reject, price and finalize the bid.</div>
-      <div><strong>Agent:</strong> reads schedules and plan text, measures rooms, stages cited proposals — never invents geometry, never commits, never prices.</div>
+      <div><strong>Agent:</strong> reads schedules and plan text, measures rooms, sweeps repeated device symbols, and traces run lengths, stages cited proposals — never invents geometry, counts, or lengths, never commits, never prices.</div>
     </div>
   );
 }
@@ -69,8 +69,9 @@ export default function AgentPanel({
           <RoleSplit />
           <p style={{ color: "var(--ink-muted)" }}>
             Once configured, you describe a takeoff ("take off the receptacle count per the power plan on this sheet")
-            and the agent aims the app's own tools — the text layer, the schedule parser, the one-click engine —
-            then stages dashed proposals you accept or reject. It never invents geometry and never commits anything itself.
+            and the agent aims the app's own tools — the text layer, the schedule parser, the one-click engine, and
+            symbol sweep (marquee one device, find every other placement) — then stages dashed proposals or count
+            marks you accept or reject. It never invents geometry or counts, and never commits anything itself.
           </p>
           <button className="btn-primary" onClick={onOpenSettings} style={{ marginTop: 4 }}>AI settings…</button>
         </div>
@@ -124,8 +125,11 @@ export default function AgentPanel({
                     <span style={{ width: 10, height: 10, flexShrink: 0, background: cond?.color || "var(--cobalt)", border: "1px solid var(--ink-faint)" }} />
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ fontWeight: 600 }}>{cond?.finish_tag || "?"}</span>
-                      {p.measure_role === "deduct" ? " (deduct)" : ""} · {sheetLabel(p.sheet_id)}
-                      {p.area_sf != null ? ` · ${fmtArea(p.area_sf)}` : ""}
+                      {p.measure_role === "deduct" ? " (deduct)" : p.measure_role === "count" ? " (count)" : p.measure_role === "linear" ? " (linear)" : ""} · {sheetLabel(p.sheet_id)}
+                      {p.area_sf != null ? ` · ${fmtArea(p.area_sf)}`
+                        : p.measure_role === "count" ? " · 1 EA"
+                        : p.measure_role === "linear" && p.perim_lf != null ? ` · ${p.perim_lf} LF`
+                        : ""}
                       <span style={{ display: "block", color: "var(--ink-muted)", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={evidenceText(p.evidence)}>
                         {evidenceText(p.evidence) || "no evidence"}
                       </span>
