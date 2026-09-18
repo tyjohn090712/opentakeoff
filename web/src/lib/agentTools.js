@@ -28,6 +28,7 @@
 //   viewRegion(sheet, region): Promise<{ image_data_url, width, height }>
 //   oneClick(sheet, x, y): Promise<{ verts_norm, area_sf, perimeter_lf, ... } | { error }>
 //   sweepSymbol(sheet, region): Promise<{ seed, matches, withheld, complete, dropped } | { error }>
+//   measureLine(sheet, pts): Promise<{ length_lf, verts_norm } | { error }>
 //   getConditions(): [{ id, finish_tag, ... }]
 //   createCondition(finish_tag): { id, finish_tag }
 //   proposeShapes(shapes): { staged }   // already-whitelisted proposals
@@ -169,6 +170,18 @@ export const AGENT_TOOL_DEFS = [
     },
   },
   {
+    name: "measure_line",
+    description: "Measure an open polyline you supply (normalized 0..1 points, at least 2, in order from one end to the other) along a run visible on the plan — a raceway, a base run, a feature strip, a strip-light fixture, anything whose length isn't stated anywhere and has to be read off the drawing. Use view_region first to see the run and place points along its actual path — never invent a length or a route. Returns length_lf at the sheet's scale. Requires the scale to be set; a length is always a real-world unit, unlike a count.",
+    input_schema: {
+      type: "object",
+      properties: {
+        sheet: { type: "string" },
+        pts: { type: "array", description: "Polyline points along the run, normalized 0..1, at least 2, in order.", items: { type: "array" } },
+      },
+      required: ["sheet", "pts"],
+    },
+  },
+  {
     name: "get_conditions",
     description: "List the takeoff conditions (finish tags) that exist in this workspace, with their ids. Proposals must reference an existing condition_id.",
     input_schema: { type: "object", properties: {}, required: [] },
@@ -184,7 +197,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "propose_shapes",
-    description: "Stage takeoff proposals for human review. For floor_area/deduct: verts_norm is the boundary ring one_click returned. For count (a discrete device or fixture): verts_norm is a single [[x,y]] point — one placement from sweep_symbol's matches or withheld list. Every shape needs the sheet, a condition_id, and EVIDENCE: the schedule row tag and/or the matched room/finish text token and/or the one_click/sweep_symbol seed. Proposals render as dashed pencil outlines (or count marks) the estimator accepts or rejects — nothing you stage is committed.",
+    description: "Stage takeoff proposals for human review. For floor_area/deduct: verts_norm is the closed ring one_click returned. For count (a discrete device or fixture): verts_norm is a single [[x,y]] point — one placement from sweep_symbol's matches or withheld list. For linear (a raceway, base run, feature strip): verts_norm is the open polyline measure_line returned, at least 2 points. Every shape needs the sheet, a condition_id, and EVIDENCE: the schedule row tag and/or the matched room/finish text token and/or the one_click/sweep_symbol/measure_line seed. Proposals render as dashed pencil outlines, lines, or count marks the estimator accepts or rejects — nothing you stage is committed.",
     input_schema: {
       type: "object",
       properties: {
@@ -194,9 +207,9 @@ export const AGENT_TOOL_DEFS = [
             type: "object",
             properties: {
               sheet: { type: "string" },
-              verts_norm: { type: "array", description: "floor_area/deduct: the ring one_click returned, [[x,y],...]. count: a single device location, [[x,y]] — one point from sweep_symbol." },
+              verts_norm: { type: "array", description: "floor_area/deduct: the closed ring one_click returned, [[x,y],...] (≥3). count: a single device location, [[x,y]] (exactly 1) — one point from sweep_symbol. linear: the open polyline measure_line returned, [[x,y],...] (≥2)." },
               condition_id: { type: "string" },
-              measure_role: { type: "string", description: "floor_area, deduct, or count" },
+              measure_role: { type: "string", description: "floor_area, deduct, count, or linear" },
               evidence: {
                 type: "object",
                 description: "Why this shape: {schedule_row_tag?, matched_text?, seed_norm?}. matched_text is the matched token only (a room tag or schedule cell), never a transcription.",
@@ -225,7 +238,7 @@ const clampRegion = (r) => ({
   y1: Math.max(0, Math.min(1, Math.max(r.y0, r.y1))),
 });
 
-const MEASURE_ROLES = new Set(["floor_area", "deduct", "count"]);
+const MEASURE_ROLES = new Set(["floor_area", "deduct", "count", "linear"]);
 
 /**
  * Execute one tool call. NEVER throws — every failure comes back as an
@@ -269,6 +282,15 @@ export async function executeAgentTool(ctx, name, args) {
         if (!ctx.sheetDims(args.sheet)) return { error: `Sheet ${args.sheet} isn't open on the canvas — pick one from list_sheets.` };
         return await ctx.sweepSymbol(args.sheet, clampRegion(args.region));
       }
+      case "measure_line": {
+        if (!ctx.sheetDims(args.sheet)) return { error: `Sheet ${args.sheet} isn't open on the canvas — pick one from list_sheets.` };
+        if (ctx.uppFor(args.sheet) == null) return { error: agentScaleGate(args.sheet, ctx.detectedLabel(args.sheet)) };
+        const pts = Array.isArray(args.pts)
+          ? args.pts.filter((v) => Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]))
+          : [];
+        if (pts.length < 2 || pts.length !== args.pts.length) return { error: "pts must be at least 2 finite [x,y] points, normalized 0..1." };
+        return await ctx.measureLine(args.sheet, pts.map(([x, y]) => [Math.max(0, Math.min(1, x)), Math.max(0, Math.min(1, y))]));
+      }
       case "get_conditions":
         return { conditions: ctx.getConditions() };
       case "create_condition": {
@@ -289,9 +311,10 @@ export async function executeAgentTool(ctx, name, args) {
           // count doesn't need real-world units (a device mark's quantity is
           // 1 EA regardless of scale) — the same rule the manual Count tool
           // and Symbol Sweep already follow (commitCount/commitSweep never
-          // check upp). floor_area/deduct still refuse on an uncalibrated sheet.
+          // check upp). floor_area/deduct/linear still refuse on an
+          // uncalibrated sheet — an area or a length is always real-world units.
           if (s.measure_role !== "count" && ctx.uppFor(s.sheet) == null) { rejected.push(agentScaleGate(s.sheet, ctx.detectedLabel(s.sheet))); continue; }
-          if (!MEASURE_ROLES.has(s.measure_role)) { rejected.push(`measure_role must be floor_area, deduct, or count (got ${JSON.stringify(s.measure_role)})`); continue; }
+          if (!MEASURE_ROLES.has(s.measure_role)) { rejected.push(`measure_role must be floor_area, deduct, count, or linear (got ${JSON.stringify(s.measure_role)})`); continue; }
           if (!condIds.has(s.condition_id)) { rejected.push(`unknown condition_id ${JSON.stringify(s.condition_id)} — use get_conditions or create_condition`); continue; }
           const verts = Array.isArray(s.verts_norm)
             ? s.verts_norm.filter((v) => Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]))
@@ -299,6 +322,8 @@ export async function executeAgentTool(ctx, name, args) {
           if (verts.length !== s.verts_norm.length) { rejected.push("verts_norm points must all be finite [x,y] pairs"); continue; }
           if (s.measure_role === "count") {
             if (verts.length !== 1) { rejected.push("a count proposal's verts_norm must be exactly one [x,y] point — a single device location from sweep_symbol"); continue; }
+          } else if (s.measure_role === "linear") {
+            if (verts.length < 2) { rejected.push("a linear proposal's verts_norm must be an open polyline of at least 2 [x,y] points — use the points measure_line returned"); continue; }
           } else if (verts.length < 3) { rejected.push("verts_norm must be a ring of at least 3 [x,y] points — use the ring one_click returned"); continue; }
           const evidence = pickAgentEvidence(s.evidence);
           if (!evidence) { rejected.push("every proposal must cite evidence: schedule_row_tag and/or matched_text and/or seed_norm"); continue; }

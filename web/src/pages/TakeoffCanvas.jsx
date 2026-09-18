@@ -5985,12 +5985,25 @@ export default function TakeoffCanvas() {
     };
   }
 
+  // Measure an agent-supplied polyline — the SAME openLen math commitLinear
+  // runs for a human's Linear-tool trace, WITHOUT touching interactive draw
+  // state or committing anything: staging happens at the accept gate, same as
+  // one_click/sweep_symbol. Needs scale (a length is always real-world
+  // units, unlike a count) — the registry already gates this before calling.
+  async function agentMeasureLine(key, pts) {
+    const p = agentPanelFor(key);
+    if (!p) return { error: `Sheet ${key} isn't rendered yet — try again in a moment.` };
+    const upp = agentUpp(key);
+    if (upp == null) return { error: agentScaleGate(key, agentStateRef.current.detectedScales[key]?.label || "") };
+    const ptsPx = pts.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+    return { length_lf: +(openLen(ptsPx) * upp).toFixed(2), verts_norm: pts.map((v) => [...v]) };
+  }
+
   // Stage already-whitelisted proposals (the registry validated + whitelisted
   // evidence before calling this). area/perim computed here for the review UI;
   // the accept gate recomputes fresh in case the estimator recalibrates first.
   function stageAgentProposals(shapes) {
     const staged = shapes.map((s) => {
-      const isCount = s.measure_role === "count";
       const base = {
         id: `agp-${mintUuid()}`,
         sheet_id: s.sheet,
@@ -6001,14 +6014,17 @@ export default function TakeoffCanvas() {
         ...(Array.isArray(s.evidence.seed_norm) ? { seed_norm: s.evidence.seed_norm } : {}),
         proposed_ts: nowIso(),
       };
-      // count proposals are a single device location, not a ring — area/perim
-      // are meaningless for them (and unpriced by scale until accept, same as
-      // the manual Count tool), so skip that math entirely rather than feed
-      // ringArea a 1-point "ring".
-      if (isCount) return base;
+      // count proposals are a single device location, not a ring — area/perim/
+      // length are meaningless for them (and unpriced by scale until accept,
+      // same as the manual Count tool), so skip that math entirely.
+      if (s.measure_role === "count") return base;
       const p = agentPanelFor(s.sheet);
       const upp = agentUpp(s.sheet) || 0;
       const ringPx = s.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+      // linear is an OPEN polyline (openLen) — a closedMetrics ring reading of
+      // it would double back across the run and over-report by ~2×. perim_lf
+      // is the same review-field name floor_area proposals already use below.
+      if (s.measure_role === "linear") return { ...base, perim_lf: +(openLen(ringPx) * upp).toFixed(2) };
       return { ...base, area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perim_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) };
     });
     setAgentProposals((ps) => [...ps, ...staged]);
@@ -6033,6 +6049,7 @@ export default function TakeoffCanvas() {
       viewRegion: agentViewRegion,
       oneClick: agentOneClickProbe,
       sweepSymbol: agentSweepSymbol,
+      measureLine: agentMeasureLine,
       getConditions: () => agentStateRef.current.conditions.map((c) => ({ id: c.id, finish_tag: c.finish_tag, hatch: c.hatch, waste_pct: c.waste_pct })),
       createCondition: (tag) => { const c = mintCondition(tag); return { id: c.id, finish_tag: c.finish_tag }; },
       proposeShapes: stageAgentProposals,
@@ -6305,16 +6322,23 @@ export default function TakeoffCanvas() {
     for (const pr of take) {
       const tp = panels.find((x) => x.key === pr.sheet_id && x.img.w);
       const isCount = pr.measure_role === "count";
+      const isLinear = pr.measure_role === "linear";
       // count needs no scale — same rule stageAgentProposals and the manual
       // Count/Symbol Sweep tools already follow (a device is 1 EA regardless
-      // of calibration); floor_area/deduct still need upp to price at accept.
+      // of calibration); floor_area/deduct/linear still need upp to price at accept.
       const upp = isCount ? null : uppFor(pr.sheet_id);
       if (!tp || (!isCount && !upp) || !condById[pr.condition_id]) { skippedClosed++; continue; }
       const ringPx = pr.verts_norm.map(([x, y]) => [x * tp.img.w, y * tp.img.h]);
+      // perimeter_lf is the field totals.js reads for ANY linear-role shape
+      // (open run or closed perimeter alike) — commitLinear's own convention,
+      // matched here so an agent-accepted run reports identically to a traced one.
+      const computed = isCount ? { count: 1 }
+        : isLinear ? { perimeter_lf: +(openLen(ringPx) * upp).toFixed(2) }
+        : { area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perimeter_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) };
       made.push({
         sheet_id: pr.sheet_id, condition_id: pr.condition_id, measure_role: pr.measure_role,
         verts_norm: pr.verts_norm.map((v) => [...v]),
-        computed: isCount ? { count: 1 } : { area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perimeter_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) },
+        computed,
         origin: {
           method: "agent_v1", actor: "agent", reviewed: true,
           proposed_ts: pr.proposed_ts, accepted_ts: nowIso(),
