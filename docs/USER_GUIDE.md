@@ -357,6 +357,21 @@ Why type conditions the architect already tabulated? Arm **Schedule** in the too
 
 On scanned pages there's no text to parse; team builds with the optional AI backend can read the schedule from pixels—the message tells you when that's what's needed.
 
+### Import panel schedule
+
+A panelboard schedule already lists every breaker you buy. Choose **⋯ › Import panel schedule** and click two corners around one panel: its title, the header row, and every circuit row. OpenTakeoff reads the panel's name, its ratings (volts, bus, main, mounting, AIC, fed from, location), and every circuit position, then opens a review dialog with the breaker totals by size and pole count.
+
+- **Two-sided and one-sided tables both read.** Odd circuits down the left and even down the right is the usual layout; a single CKT / DESCRIPTION / TRIP / POLES table works too.
+- **Multi-pole breakers take their rows.** Whether the schedule writes `--` on the extra rows or merges the cell across them, a 2-pole breaker occupies two circuit numbers and a 3-pole breaker three.
+- **Spares are breakers; spaces aren't.** **Spare** counts toward the breakers you buy. **Space**, **Prepared space**, and a blank row count as open pole positions.
+- **Nothing is guessed.** A row that names a load without a readable breaker size, a size that isn't a standard rating (NEC 240.6(A)), or a pole count outside 1–3 arrives as **Review** with the reason. It stays out of the counts until you enter the trip and poles in the dialog—the row then counts as a load, or as a spare if its description says so.
+
+Name the panel if the title didn't read, then click **Save panel**. Leave **Add a `PNL-<name>` count condition** selected to create a count condition for placing the panel on the plan. Importing a panel with a name you already imported replaces it, so you can reread a revised sheet. The tool stays armed for the next panel; press `Esc` when you're done.
+
+**Scanned and flattened sheets.** Many panel schedules arrive with no selectable text—printed and scanned, or flattened in Bluebeam. When the box has no readable text table, OpenTakeoff reads the image on your computer with on-device OCR: nothing is uploaded and no sign-in or AI key is needed. The first read on a session loads the reader (about 7 MB); a panel then takes a few seconds while the status bar shows `Reading the panel schedule on this computer — column 3 of 8…`. Check OCR'd rows in the dialog before you save; most misreads land in **Review** instead of the counts.
+
+Imported panels appear in the Report under **Panel schedules — breakers**, with a roll-up across every panel, and export as **Panel breakers CSV**.
+
 ---
 
 ## 5. The measuring tools
@@ -651,6 +666,7 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 | **Print** | The report through your browser's print dialog. |
 | **Marked set** | A distribution-ready PDF built in your browser: every sheet that carries takeoffs or markups, the work burned in as drawn—condition colors, hatches, quantity chips, count markers, markups (toggleable)—behind a legend cover with net totals, w/Waste quantities, and a by-sheet breakdown. Exports in your current view: dark canvas → dark PDF. Send it to a GC who will never install anything. |
 | **RFI CSV / JSON** | The RFI register (appears once RFIs exist). |
+| **Panel breakers CSV** | One row per panel per breaker size (with how many are spares), a `SPACE` row per panel, and every row still to review, listed by circuit. Appears once you've imported a panel schedule. |
 
 **Contribute** also lives here—covered with the rest of your data in §12.
 

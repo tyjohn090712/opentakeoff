@@ -2,6 +2,15 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-10-23 — panel schedules read themselves (electrical fork, Wave 4)
+
+### Added
+- **Import panel schedule** (**⋯ › Import panel schedule**). Click two corners around one panelboard's schedule and OpenTakeoff reads its name, ratings (volts, bus, main, mounting, AIC, fed from, location), and every circuit position into a review dialog with breaker totals by size and pole count. Two-sided and one-sided tables; multi-pole breakers written with `--` continuation rows or as merged cells; **Spare** counted as a breaker, **Space** / **Prepared space** / blank rows as open pole positions. Save it and the panel lands in the Report's **Panel schedules — breakers** section, with a roll-up across every panel, and in **Export › Panel breakers CSV**. Optionally creates a `PNL-<name>` count condition for placing the panel on the plan. The tool stays armed so a sheet of panels reads one after another.
+- **Scanned and flattened sheets read on-device.** Real panel schedules often have no text layer (scanned, or flattened in Bluebeam). When the box holds no readable text table, the region is read by OCR in the browser (tesseract.js, shipped with the app and loaded on first use—about 7 MB; nothing uploaded, no sign-in, no key). The reader erases the table's rules before OCR, reads one column at a time (whole-table OCR drops the lone `1`s a POLES column is made of), gives an implausible cell a single-line second look, and corrects circuit numbers against their row grid ("11" read as "1"). Measured on 14 real panels across three sheets and two schedule templates—one 300 dpi scan, two flattened sets—every breaker count matched the drawing.
+- **Withheld, never guessed.** A load with no readable breaker size, a size that isn't an NEC 240.6(A) standard rating, or an unreadable pole count arrives as **Review** with its reason and stays out of the counts until you enter the trip and poles. A withheld 2-pole breaker still holds both of its rows, so the second row never reads as an empty space.
+
+Pure, node-tested parser (`web/src/lib/panelSchedule.ts`), rules and OCR clean-up (`panelRaster.ts`), and OCR orchestration with an injected engine (`panelOcr.ts`); persisted as the additive `panel_schedules` payload key (`panelSchedules.js`).
+
 ## 2026-08-28 — richer variants are named, and variant_guard makes them questions
 
 ### Added

@@ -46,6 +46,10 @@ import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, al
 import { isCanvasBusy } from "../lib/canvasBusy";
 import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
 import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
+import { parsePanelSchedule } from "../lib/panelSchedule";
+import { findVerticalRules, findHorizontalRules, rulesFromSegments, cleanForOcr, toGray } from "../lib/panelRaster";
+import { readPanelTokens } from "../lib/panelOcr";
+import { sanitizePanelSchedules, mintPanelId } from "../lib/panelSchedules.js";
 import { normalizeTag } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
 // this file only calls it from the material write paths and the condition deletes.
@@ -103,6 +107,7 @@ import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPa
 import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
+import ImportPanelPanel from "../components/ImportPanelPanel.jsx";
 // Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
 // docked diagram/reorder desk. Cut edits commit through the rollcut command.
@@ -249,7 +254,7 @@ const TOOL_VERB = {
   count: "place_count", oneclick: "one_click", calibrate: "set_scale",
   symbol: "symbol_sweep",
   check: "check_dimension", zone: "zone_check", "stitch-align": "stitch_align",
-  schedule: "find_schedule", highlighter: "annotate", cloud: "annotate",
+  schedule: "find_schedule", panelsched: "panel_schedule", highlighter: "annotate", cloud: "annotate",
   callout: "annotate", text: "annotate", highlight: "annotate",
   arrow: "annotate", dimension: "annotate", stamp: "annotate", bubble: "annotate",
 };
@@ -723,7 +728,10 @@ export default function TakeoffCanvas() {
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
   const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
-  const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
+  const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" / "panelsched" tools — ISOLATED from poly so it can never leak into a measure shape
+  const [panelDraft, setPanelDraft] = useState(null);         // Import-panel-schedule approval draft { panel, sheet_id, region, source } (null = dialog closed)
+  const [panelSchedules, setPanelSchedules] = useState([]);   // imported panel schedules — additive `panel_schedules` payload key (lib/panelSchedules.js)
+  const panelBusyRef = useRef(false);                         // a panel read (text or OCR) in flight — a second marquee waits
   // ── the Symbol tool (#264) — same two-click marquee idiom as schedule ─────
   const [symbolAnchor, setSymbolAnchor] = useState(null);     // first marquee corner, isolated like scheduleAnchor
   const [imageAnchor, setImageAnchor] = useState(null);       // first marquee corner for the "image" screenshot tool, isolated like scheduleAnchor/symbolAnchor
@@ -1535,6 +1543,7 @@ export default function TakeoffCanvas() {
     // snapshot load without this key (every payload saved before this
     // feature shipped) must not inherit the replaced project's RFP fields.
     setRfpInfo(sanitizeRfpInfo(a.rfp_info));
+    setPanelSchedules(sanitizePanelSchedules(a.panel_schedules));   // additive `panel_schedules` — same else-clear rule
     setConditionColumns(sanitizeConditionColumns(a.condition_columns));   // non-array/malformed → [] (unconditional set: snapshot load must not inherit pre-load columns)
     setShapeLabels(sanitizeShapeLabels(a.shape_labels));   // same unconditional-set rule: a snapshot load must not inherit the replaced project's label vocabulary
     setActiveLabel(null);   // active label is session-only — never carry one from the replaced project into a fresh/loaded one
@@ -2276,7 +2285,7 @@ export default function TakeoffCanvas() {
     // units is additive and diff-only (the sheet_levels convention): imperial —
     // the default — omits the key, so an old imperial project's payload is
     // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), ...(hasRfpContent(rfpInfo) ? { rfp_info: rfpInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}), ...(scaleUnconfirmed[sheet_id] === false ? { scale_confirmed: false } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(stitches.length ? { stitches } : {}), ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
+    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), ...(hasRfpContent(rfpInfo) ? { rfp_info: rfpInfo } : {}), ...(panelSchedules.length ? { panel_schedules: panelSchedules } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}), ...(scaleUnconfirmed[sheet_id] === false ? { scale_confirmed: false } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(stitches.length ? { stitches } : {}), ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
   };
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -2509,7 +2518,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, rfpInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, rfpInfo, panelSchedules, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -2868,7 +2877,7 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setImageAnchor(null); setPlacingImageId(null); placeGrabRef.current = null; placeCrossSheetRef.current = null; setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else if (tool === "panelsched" && !scheduleAnchor) { setTool("select"); setCommitMsg(""); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setImageAnchor(null); setPlacingImageId(null); placeGrabRef.current = null; placeCrossSheetRef.current = null; setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
@@ -2887,7 +2896,7 @@ export default function TakeoffCanvas() {
     return () => window.removeEventListener("keydown", onKey);
     // approvals is a real dep: ⌘Z's undoShapeCommand closes over it (the
     // family branch), and a stale capture would undo against a pre-seal array.
-  }, [tool, selectedId, selVert, selectedMarkupId, showMarkups, poly, proposal, ocSel, shapes, approvals, sheetKey, groupSig, scales, focusKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tool, scheduleAnchor, selectedId, selVert, selectedMarkupId, showMarkups, poly, proposal, ocSel, shapes, approvals, sheetKey, groupSig, scales, focusKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The typed "drawing says" value belongs to ONE completed two-point check.
   // The moment the measurement is no longer complete — third-click restart,
@@ -2976,7 +2985,7 @@ export default function TakeoffCanvas() {
     // cursor here; otherwise a stale ref freezes the drag or jumps it on grab.
     // schedule (marquee) wants the raw cursor like select — snapping a corner to
     // a vector vertex would shift the box off the schedule and misread the region
-    const rawCursor = tool === "select" || tool === "schedule";
+    const rawCursor = tool === "select" || tool === "schedule" || tool === "panelsched";
     const p = (!rawCursor && snapOn && snapRef.current) ? snapRef.current
       : (!rawCursor && angleOn && angleRef.current) ? angleRef.current
         : toImage(e.clientX, e.clientY);
@@ -3032,6 +3041,12 @@ export default function TakeoffCanvas() {
       // two-click marquee, isolated state: first click drops the anchor, second reads the box
       if (!scheduleAnchor) setScheduleAnchor(p);
       else { importScheduleFromRect(scheduleAnchor, p); setScheduleAnchor(null); setTool("select"); }
+    }
+    else if (tool === "panelsched") {
+      // same marquee; the tool STAYS armed — a sheet of panel schedules is
+      // read one panel after another (Esc or another tool to stop)
+      if (!scheduleAnchor) setScheduleAnchor(p);
+      else { importPanelFromRect(scheduleAnchor, p); setScheduleAnchor(null); }
     }
     else if (tool === "symbol") {
       // the Symbol tool's marquee (#264): tight box around ONE instance
@@ -3634,7 +3649,7 @@ export default function TakeoffCanvas() {
       } else arcRef.current.style.display = "none";
     }
     if (rectRef.current) {
-      const schedDraw = tool === "schedule" && scheduleAnchor;
+      const schedDraw = (tool === "schedule" || tool === "panelsched") && scheduleAnchor;
       const symDraw = tool === "symbol" && symbolAnchor;
       const imgDraw = tool === "image" && imageAnchor;
       if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw || symDraw || imgDraw)) {
@@ -6714,6 +6729,113 @@ export default function TakeoffCanvas() {
     return { b64: dataUrl.split(",")[1] || "", width: bw, height: bh };
   }
 
+  // ── Import panel schedule (electrical fork, Wave 4) ─────────────────────────
+  // Read ONE panelboard's schedule from the marqueed box. Two readers, one
+  // parser (lib/panelSchedule.ts), one approval dialog:
+  //   • vector sheets: the page text layer + the table's rules from the vector
+  //     linework — instant, deterministic;
+  //   • scanned / flattened sheets (no usable text in the box): on-device OCR
+  //     (lib/panelOcr.ts over tesseract.js) — nothing leaves the machine, no
+  //     sign-in, no key. The first read loads the ~7 MB reader.
+  // Corners a,b are stage px (raw cursor, like the finish-schedule marquee).
+  async function importPanelFromRect(a, b) {
+    if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    const panel = panelAt(a[0]);
+    if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet, around one panel's schedule."); return; }
+    const pageObj = pageObjsRef.current.get(panel.key);
+    if (!pageObj) { setCommitMsg("Read a panel schedule on a single sheet (not a stitched view)."); return; }
+    if (panelBusyRef.current) { setCommitMsg("Still reading the last panel schedule — one moment."); return; }
+    const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
+    const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const rect = {
+      x0: cl(Math.min(a[0], b[0]) - panel.xOffset, 0, panel.img.w), x1: cl(Math.max(a[0], b[0]) - panel.xOffset, 0, panel.img.w),
+      y0: cl(Math.min(a[1], b[1]), 0, panel.img.h), y1: cl(Math.max(a[1], b[1]), 0, panel.img.h),
+    };
+    if (rect.x1 - rect.x0 < 40 || rect.y1 - rect.y0 < 40) { setCommitMsg("Drag a bigger box — around the panel's whole schedule."); return; }
+    const seq = renderSeqRef.current;                 // a sheet switch mid-read must not pop a dialog for a page you left
+    const region = [rect.x0 / panel.img.w, rect.y0 / panel.img.h, rect.x1 / panel.img.w, rect.y1 / panel.img.h];
+    panelBusyRef.current = true;
+    try {
+      // 1 — the text layer, columns from the vector rules
+      const vp = pageObj.getViewport({ scale: rs });
+      const tc = await pageObj.getTextContent();
+      if (seq !== renderSeqRef.current) return;
+      const tokens = extractRegionText(tc, vp, rect).map((t) => ({ ...t, x: t.x - rect.x0, y: t.y - rect.y0 }));
+      const segs = vectorSegsRef.current.get(panel.key);
+      let res = tokens.length ? parsePanelSchedule(tokens, { rules: segs ? rulesFromSegments(segs, rect) : [] }) : null;
+      let source = "text";
+      // 2 — no readable table in the text: read the pixels on this machine
+      if (!res?.panel) {
+        setCommitMsg(tokens.length ? "No text table there — reading the image on this computer…" : "No text layer on this sheet — reading the panel schedule on this computer (the first read loads the reader)…");
+        const img = await rasterizeGrayRegion(pageObj, rs, rect);
+        if (seq !== renderSeqRef.current) return;
+        const vr = findVerticalRules(img.gray, img.w, img.h);
+        const hr = findHorizontalRules(img.gray, img.w, img.h);
+        const bin = { data: cleanForOcr(img.gray, img.w, img.h, vr, hr), w: img.w, h: img.h };
+        const gray = { data: cleanForOcr(img.gray, img.w, img.h, vr, hr, { binarize: false }), w: img.w, h: img.h };
+        const { getOcrWorker, makeRecognizer } = await import("../lib/ocrEngine.js");
+        const worker = await getOcrWorker();
+        if (seq !== renderSeqRef.current) return;
+        const toks = await readPanelTokens(img.w, img.h, vr, makeRecognizer(worker, { bin, gray }),
+          (done, total) => setCommitMsg(`Reading the panel schedule on this computer — column ${done} of ${total}…`));
+        if (seq !== renderSeqRef.current) return;
+        res = parsePanelSchedule(toks, { rules: vr });
+        source = "ocr";
+      }
+      if (!res.panel) { setCommitMsg(`No panel schedule found in that box — ${res.reason}. Drag around ONE panel: its title, header row and circuit rows.`); return; }
+      setCommitMsg("");
+      setPanelDraft({ panel: res.panel, sheet_id: panel.key, region, source });
+    } catch (e) {
+      console.warn("[panel-schedule] read failed", e);
+      setCommitMsg("Couldn't read that panel schedule.");
+    } finally {
+      panelBusyRef.current = false;
+      bumpIdle();
+    }
+  }
+
+  // The marqueed region as grayscale pixels at OCR resolution (~216 dpi —
+  // where Tesseract reads 6–8 pt schedule text best), capped like every other
+  // offscreen render so a whole-sheet box can't exceed the backing store.
+  async function rasterizeGrayRegion(pageObj, rs, rect) {
+    const regW = Math.max(1, rect.x1 - rect.x0), regH = Math.max(1, rect.y1 - rect.y0);
+    const OCR_DPI_SCALE = 3;   // pdf units → px (72 dpi × 3 = 216 dpi)
+    const factor = Math.min(OCR_DPI_SCALE / rs, MAX_CANVAS_DIM / regW, MAX_CANVAS_DIM / regH, Math.sqrt(MAX_CANVAS_AREA / (regW * regH)));
+    const w = Math.max(1, Math.round(regW * factor)), h = Math.max(1, Math.round(regH * factor));
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+    await pageObj.render({
+      canvasContext: ctx,
+      viewport: pageObj.getViewport({ scale: rs * factor }),
+      transform: [1, 0, 0, 1, -rect.x0 * factor, -rect.y0 * factor],
+    }).promise;
+    return { gray: toGray(ctx.getImageData(0, 0, w, h).data, w, h), w, h };
+  }
+
+  // Approved panel → the project's panel schedules (a same-name panel is
+  // replaced: re-reading a revised sheet updates it), plus — when asked — a
+  // PNL-<name> count condition through the one minting path, for placing the
+  // panel on the plan.
+  function savePanelSchedule(edited, { makeCondition }) {
+    const d = panelDraft;
+    if (!d) return;
+    const rec = sanitizePanelSchedules([{
+      ...edited, id: mintPanelId(), sheet_id: d.sheet_id, region: d.region, source: d.source, imported_at: nowIso(),
+    }])[0];
+    setPanelDraft(null);
+    if (!rec) return;
+    setPanelSchedules((ps) => [...ps.filter((p) => p.name !== rec.name), rec]);
+    let made = null;
+    if (makeCondition) {
+      const tag = normalizeTag(`PNL-${rec.name}`);
+      if (!conditions.some((c) => normalizeTag(c.finish_tag) === tag)) made = mintCondition(tag);
+    }
+    const withheld = rec.circuits.filter((c) => c.kind === "withheld").length;
+    setCommitMsg(`Saved panel ${rec.name}${made ? ` and condition ${made.finish_tag}` : ""}${withheld ? ` — ${withheld} row${withheld === 1 ? "" : "s"} still to review` : ""}. Draw around the next panel, or Esc.`);
+  }
+
   // ── image markup (#…) — two entry points, one record type ────────────────
   // Marquee screenshot: a,b are the two marquee corners in stage px. Render the
   // boxed region of the plan offscreen (the rasterizeRegion idiom, but with its
@@ -8006,6 +8128,7 @@ export default function TakeoffCanvas() {
             { id: "draftoutline", custom: draftOutlineRow },
             "divider",
             { id: "schedule", icon: "rectTool", label: "Import from schedule", active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
+            { id: "panelsched", icon: "rectTool", label: "Import panel schedule", active: tool === "panelsched", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "panelsched" ? "select" : "panelsched")); if (tool !== "panelsched") setCommitMsg("Click two corners around ONE panel's schedule — its title, header row and every circuit row."); } },
             ...(cloudMode ? [
               "divider",
               { id: "closeproj", label: "Close project", onSelect: closeProject },
@@ -9254,7 +9377,7 @@ export default function TakeoffCanvas() {
                   fill; rect & symbol marquees are measure tools, themed via DS. */}
               {(() => {
                 const rectDeduct = tool === "deduct" || tool === "deduct-rect";
-                const rectNeutral = tool === "schedule";   // selection gesture, not measurement — never themed
+                const rectNeutral = tool === "schedule" || tool === "panelsched";   // selection gesture, not measurement — never themed
                 return <rect ref={rectRef}
                   fill={rectDeduct ? "rgba(176,58,38,.22)" : rectNeutral ? shapeFill(aCond) : draftFill}
                   stroke={rectDeduct ? "#b03a26" : rectNeutral ? "#1f3fc7" : DS.accent}
@@ -9899,6 +10022,16 @@ export default function TakeoffCanvas() {
         />
       )}
 
+      {panelDraft && (
+        <ImportPanelPanel
+          draft={{ panel: panelDraft.panel, source: panelDraft.source, sheetLabel: tabLabel(panelDraft.sheet_id) }}
+          existingNames={new Set(panelSchedules.map((p) => p.name))}
+          conditionTags={new Set(conditions.map((c) => normalizeTag(c.finish_tag)))}
+          onSave={savePanelSchedule}
+          onClose={() => setPanelDraft(null)}
+        />
+      )}
+
       {importRows && (
         <ImportSchedulePanel
           rows={importRows}
@@ -9923,6 +10056,7 @@ export default function TakeoffCanvas() {
         <ReportPanel
           projectName={projectName} onProjectName={setProjectName}
           clientInfo={clientInfo} onClientInfo={setClientInfo} rfpInfo={rfpInfo} onRfpInfo={setRfpInfo} units={units}
+          panelSchedules={panelSchedules} onPanelSchedules={setPanelSchedules}
           conditions={conditions} shapes={shapes} markups={markups} rfis={rfis}
           conditionColumns={conditionColumns} shapeLabels={shapeLabels}
           scaleInfo={Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id] || "unknown", scale_confirmed: scaleUnconfirmed[sheet_id] !== false }))}

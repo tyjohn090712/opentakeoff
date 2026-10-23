@@ -68,6 +68,7 @@
   /* buttons / inputs don't print; neither does an open modal */
   .report-toolbar { display: none !important; }
   .report-modal   { display: none !important; }
+  .report-noprint { display: none !important; }
 
   /* masthead: project, date, per-sheet scale provenance, generator, disclaimer */
   .report-print-header { display: block; }

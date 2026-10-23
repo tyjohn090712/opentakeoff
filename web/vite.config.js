@@ -1,6 +1,29 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+
+// The on-device OCR model for "Import panel schedule" (src/lib/ocrEngine.js),
+// served at a FIXED same-origin path: tesseract.js fetches
+// `${langPath}/eng.traineddata.gz` by name, so it can't be a hashed asset. It's
+// read straight from the installed npm package — nothing to stage, nothing
+// committed — and emitted into dist/ at build (dev serves it from memory).
+const OCR_MODEL = "ocr/eng.traineddata.gz";
+function ocrModel() {
+  const file = createRequire(import.meta.url).resolve("@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz");
+  return {
+    name: "ocr-model",
+    configureServer(server) {
+      server.middlewares.use(`${server.config.base}${OCR_MODEL}`, (_req, res) => {
+        res.setHeader("Content-Type", "application/octet-stream");
+        res.end(readFileSync(file));
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: OCR_MODEL, source: readFileSync(file) });
+    },
+  };
+}
 
 // The one source of truth for the app version — package.json — inlined as
 // __APP_VERSION__ so contributions can carry generator_version without a
@@ -17,7 +40,7 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 // model AI sandbox in `../server` (see server/README.md). Without it, the app
 // works fully; the AI hooks just stay dormant.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), ocrModel()],
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   // The STT worker (stt.worker.ts, RFC #59) lazy-imports its engine adapter,
   // which needs code-splitting inside the worker bundle — only the ES format

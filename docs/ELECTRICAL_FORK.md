@@ -35,10 +35,28 @@ No flooring equivalent exists for "a run from panel to device, with wire count d
 
 Build (1) first, using it before deciding whether (2) is worth the geometry work.
 
-## Wave 4 — panel schedule import
+## Wave 4 — panel schedule import — DONE (`claude/stoic-galileo-er1wci`)
 
-- Upstream's "Import from schedule" parses an architect's finish table into conditions behind a verify dialog; `sheetgraph.ts` (`sheet_graph`/`resolve_tag`/`find_schedule`) resolves schedule tables generically, not finish-schedule-specific by design.
-- Retarget at panel schedules: circuit number, breaker size, phase, load description per panel. Reuses the citation-per-cell approach — the audit trail this fork wants (means and methods, part numbers, ambiguities as standalone lines), applied to panel schedules instead of finish schedules.
+**⋯ › Import panel schedule**: marquee one panelboard's schedule → a review dialog → the panel is saved with the project (`panel_schedules` payload key), shows in the Report (**Panel schedules — breakers**, with an all-panels roll-up), and exports as **Panel breakers CSV** (one row per panel per breaker size + spaces + every unresolved row — the shape that goes into Accubid). Optional `PNL-<name>` count condition for placing the panel on the plan.
+
+What the real sheets taught (14 panels from three real bid sets in the owner's files — kept out of this public repo, they're confidential):
+- **Most panel schedules in the wild have no text layer.** All three sheets pulled were either a 300 dpi scan or Bluebeam-flattened vector (text drawn as paths). A text-layer-only importer would have read none of them. So there are two readers behind one parser:
+  - vector text → `extractRegionText` tokens, columns from the vector rules (`panelRaster.rulesFromSegments`);
+  - no text → **on-device OCR** (tesseract.js, shipped with the app, ~7 MB lazy-loaded, nothing uploaded — matters for NDA drawings and for an estimator who can't use a cloud AI at work).
+- **OCR needs help on ruled tables.** Whole-region Tesseract on a panel schedule is mostly garbage. What made it exact: erase the table rules first (`cleanForOcr`), read one column strip at a time (sparse OCR drops the lone `1`s), a single-line second look at any implausible cell, and a gray (not binarized) raster for that second look (binarizing jags narrow-font `3`s into "0A").
+- **Circuit numbers are a grid.** OCR drops repeated digits ("11"→"1", "34"→"4"); the parser fits the row pitch and the majority base per side and corrects against it, and fills rows whose lone "1" never read (a merged 3-pole cell needs rows 1 and 5 to exist to land on 1-3-5).
+- **Two templates seen**: Revit default (`--` continuation rows) and a merged-cell template (text centered on the middle row of a 3-pole, between rows of a 2-pole, wrapped descriptions spanning rows). Both resolve to the same spans.
+- **Withheld doctrine carried over**: no readable trip, a non-standard trip (NEC 240.6(A)), or unreadable poles → `withheld` with a reason, out of the counts until the estimator types the value in the dialog.
+
+Result on the 14 real panels (scratch harness, not in the repo): every breaker count matched the drawing; 0 rows withheld after the gray second look. Browser end-to-end verified on a vector synthetic sheet (64 ms) and a scanned panel (8.6 s including the reader's first load).
+
+Code: `web/src/lib/panelSchedule.ts` (parser, pure), `panelRaster.ts` (rules, OCR clean-up), `panelOcr.ts` (two-pass OCR orchestration, engine injected), `ocrEngine.js` (tesseract.js in the browser), `panelSchedules.js` (persistence, roll-up, CSV), `components/ImportPanelPanel.jsx` (review dialog). Tests: `test/panelSchedule.test.ts`, `test/panelRaster.test.ts`, `test/panelSchedules.test.ts` (synthetic data only).
+
+Not done / next:
+- **Validate on a Revit vector set with a real text layer** (the current IFC set's panel sheets — the Drive connector can't pull files over 10 MB; extracting the panel pages into a smaller PDF would let them be tested).
+- **One marquee, many panels**: a sheet usually carries 4–6 panels; today it's one box per panel (the tool stays armed between them).
+- **Highlight the source row** on the sheet from the dialog (the region and row y are already stored).
+- **Feeder / homerun link**: panel ↔ `EMT-BRANCH` runs and fixture counts by circuit — the bridge to Wave 3.2.
 
 ## Wave 5 — materials/waste model rework
 
@@ -61,5 +79,5 @@ Build (1) first, using it before deciding whether (2) is worth the geometry work
 1. Wave 1 — done.
 2. Wave 2 — device counting workflow, mostly using what exists.
 3. Wave 3.1 — raceway-as-linear-condition, reuses existing math.
-4. Wave 4 — panel schedule import, highest leverage for fast job understanding.
+4. Wave 4 — panel schedule import — done (text layer + on-device OCR).
 5. Wave 3.2 — real circuit-tracing tool, only once 1–4 are in daily use.
