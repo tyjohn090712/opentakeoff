@@ -26,6 +26,8 @@ import { normalizeLogoToPng, loadProfiles, saveProfiles, activeProfile, updateAc
 import { resolveBranding, loadBrandingSelection, saveBrandingSelection } from "../lib/branding.js";
 import { projectIdFromUrl } from "../lib/store.js";
 import { mintDocument, mintBreakout, sanitizeRfpInfo, RFP_DOC_CAP, RFP_BREAKOUT_CAP } from "../lib/rfpInfo.js";
+import { allPanelsTotals, panelSchedulesToCsv, breakerSummaryText } from "../lib/panelSchedules.js";
+import { panelTotals, breakerLabel } from "../lib/panelSchedule";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
@@ -47,7 +49,7 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, rfpInfo, onRfpInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, rfpInfo, onRfpInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null, panelSchedules = [], onPanelSchedules }) {
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
   // imported report theme → { vars, name, warnings }. vars are spread onto this
@@ -320,6 +322,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const exportJson = () => downloadText(`${baseName}.json`,
     JSON.stringify(reportJson({ projectName, rows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond, shapeLabels, byLabel: byLabelExport, displayUnits: units, rollGoods: rollReportRows(rollByCond, rows) }), null, 2),
     "application/json");
+  const exportPanelsCsv = () => downloadText(`${baseName}_panel_breakers.csv`, panelSchedulesToCsv(panelSchedules, sheetLabel), "text/csv");
+  const panelRollup = useMemo(() => allPanelsTotals(panelSchedules), [panelSchedules]);
   const exportRfisCsv = () => downloadText(`${baseName}_rfis.csv`, rfisToCsv(rfis, markups, projectName, sheetLabel, brand.brandName), "text/csv");
   const exportRfisJson = () => downloadText(`${baseName}_rfis.json`,
     JSON.stringify(rfisToJson(rfis, projectName), null, 2), "application/json");
@@ -580,7 +584,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             carried. RFI exports stay their own controls, shown only when RFIs exist. */}
         <ToolMenu
           title="Download the report and shape data"
-          disabled={!rows.length && !shapes.length && !markups.length && !rfis.length}
+          disabled={!rows.length && !shapes.length && !markups.length && !rfis.length && !panelSchedules.length}
           face={<><Icon name="document" size={13} />Export</>}
           items={[
             { section: "Report" },
@@ -595,14 +599,18 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 : !dxfSheets.length ? "Set the scale on a sheet with shapes first — a CAD file in pixels is worse than none"
                 : `AutoCAD-ready geometry: closed polylines per finish on OT-<TAG> layers, ${units === "metric" ? "metres" : "feet"}, one drawing per sheet${dxfSkipped.length ? ` — ${dxfSkipped.length} unscaled sheet${dxfSkipped.length > 1 ? "s" : ""} left out` : ""}`,
               onSelect: exportDxf },
+            ...(panelSchedules.length ? [
+              { section: "Panels" },
+              { id: "panels-csv", icon: "document", label: "Panel breakers CSV", title: "One row per panel per breaker size, plus spaces and every unresolved row — for the estimate", onSelect: exportPanelsCsv },
+            ] : []),
           ]}
         />
         <ToolMenu
           title="Print the report, or generate the marked-set PDF"
-          disabled={!rows.length && !markups.length && !rfis.length /* both items are disabled exactly here: with no rows/rfis, the marked-set condition also collapses to true */}
+          disabled={!rows.length && !markups.length && !rfis.length && !panelSchedules.length /* both items are disabled exactly here: with no rows/rfis, the marked-set condition also collapses to true; a panels-only report still prints */}
           face={<span>Print</span>}
           items={[
-            { id: "print", label: "Print report", disabled: !rows.length && !markups.length && !rfis.length, title: "Print the on-screen report (browser print / save as PDF)", onSelect: () => window.print() },
+            { id: "print", label: "Print report", disabled: !rows.length && !markups.length && !rfis.length && !panelSchedules.length, title: "Print the on-screen report (browser print / save as PDF)", onSelect: () => window.print() },
             ...(onMarkedSet ? [
               "divider",
               { section: "Marked set" },
@@ -923,6 +931,78 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 </React.Fragment>
               ))}
               <br />Each quantity = measured {`{area / linear / count}`} ÷ your coverage rate, rounded up to whole units.
+            </p>
+          </div>
+        )}
+        {panelSchedules.length > 0 && (
+          <div style={{ maxWidth: 980, margin: "26px auto 0" }}>
+            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>Panel schedules — breakers</h3>
+            <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...th, textAlign: "left" }}>Panel</th>
+                  <th style={{ ...th, textAlign: "left" }}>Ratings</th>
+                  <th style={{ ...th, textAlign: "left" }}>Breakers</th>
+                  <th style={th}>Spare</th>
+                  <th style={th}>Space</th>
+                  <th style={th}>Review</th>
+                </tr>
+              </thead>
+              <tbody>
+                {panelSchedules.map((p) => {
+                  const t = panelTotals(p.circuits);
+                  return (
+                    <tr key={p.id}>
+                      <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)", fontWeight: 700 }}>
+                        {p.name}
+                        <div style={{ fontFamily: "var(--f-body)", fontWeight: 400, fontSize: 11, color: "var(--ink-muted)" }}>{sheetLabel ? sheetLabel(p.sheet_id) : p.sheet_id}{p.source === "ocr" ? " · read by OCR" : ""}</div>
+                      </td>
+                      <td style={{ ...td, textAlign: "left", whiteSpace: "normal", fontSize: 11.5 }}>{[p.info?.volts, p.info?.bus && `${p.info.bus} bus`, p.info?.main && `main ${p.info.main}`].filter(Boolean).join(" · ") || "—"}</td>
+                      <td style={{ ...td, textAlign: "left", whiteSpace: "normal", fontFamily: "var(--f-mono)", fontSize: 11.5 }}>
+                        <strong>{t.breakerCount}</strong>{t.breakers.length ? ` — ${breakerSummaryText(t.breakers)}` : ""}
+                      </td>
+                      <td style={td}>{t.spareCount || "—"}</td>
+                      <td style={td}>{t.spacePositions || "—"}</td>
+                      <td style={{ ...td, color: t.withheld ? "var(--c-danger)" : undefined, fontWeight: t.withheld ? 700 : 400 }}>
+                        {t.withheld || "—"}
+                        {onPanelSchedules && (
+                          <button className="report-noprint" title={`Remove panel ${p.name} from this project`} onClick={() => { if (window.confirm(`Remove panel ${p.name}? Its PNL condition and any counts stay.`)) onPanelSchedules((ps) => ps.filter((x) => x.id !== p.id)); }}
+                            style={{ marginLeft: 8, padding: "0 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10 }}>Remove</button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {panelRollup.breakers.length > 0 && (
+              <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", marginTop: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...th, textAlign: "left" }}>All panels — breaker</th>
+                    <th style={th}>Qty</th>
+                    <th style={th}>Of which spare</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {panelRollup.breakers.map((b) => (
+                    <tr key={`${b.poles}|${b.trip}`}>
+                      <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)" }}>{breakerLabel(b.trip, b.poles)}</td>
+                      <td style={{ ...td, fontWeight: 700 }}>{b.count}</td>
+                      <td style={td}>{b.spares || "—"}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td style={{ ...td, textAlign: "left", fontWeight: 700 }}>Total breakers · space positions</td>
+                    <td style={{ ...td, fontWeight: 700 }}>{panelRollup.breakerCount}</td>
+                    <td style={td}>{panelRollup.spacePositions} space</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+            <p style={{ margin: "10px auto 0", fontSize: 11.5, color: "var(--ink-muted)", lineHeight: 1.6 }}>
+              What each panel schedule says, read from the drawings — not counted from the plan. Spares are breakers to buy; spaces are open pole positions.
+              {panelRollup.withheld > 0 && <> <strong style={{ color: "var(--c-danger)" }}>{panelRollup.withheld} row{panelRollup.withheld === 1 ? "" : "s"} still to review</strong> — not in the counts; listed in the Panel breakers CSV.</>}
             </p>
           </div>
         )}

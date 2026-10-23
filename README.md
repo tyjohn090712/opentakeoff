@@ -330,7 +330,9 @@ hatch pattern** so the canvas reads like the real drawing, a per-condition **was
 **×N multiplier**, a default wall **height**, and a **thickness** that turns a linear run into
 border SF. **Import from schedule** parses the architect's finish table off the sheet into
 conditions behind a verify dialog—you approve what becomes a condition, and the product spec
-rides along as read-only report columns.
+rides along as read-only report columns. **Import panel schedule** reads a panelboard's
+schedule—vector text, or on-device OCR for a scanned or flattened sheet—into breaker counts by
+size and pole count, with spares and spaces kept apart and anything unreadable held for review.
 
 **Supporting Materials** is the layer most takeoff tools punt on: per condition, a labor type
 and a subfloor type, plus the consumables that actually go on the order—adhesive, sealer,
@@ -469,11 +471,12 @@ plus a vision-capable model id.
 | **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, ⟂ Transitions, Zone check—imperial or metric |
 | **Drawing aids** | 45°/90° angle lock with `⇧` hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, wall height, border thickness, schedule import, browser-wide library |
+| **Panel schedules** | Read a panelboard schedule—text layer, or on-device OCR for scanned and flattened sheets—into breakers by size and poles, spares, spaces, and rows held for review; Report roll-up + Panel breakers CSV |
 | **Supporting Materials** | Labor + subfloor type, coverage rate × basis (incl. figured seam LF) → rounded order quantities, trowel/roller presets, grout calculator |
 | **Roll goods** | Per-condition roll setup → lanes, seams, multi-roll splits, to-scale cuts with drag-to-reorder nesting, Roll Order LF + Rolls + figured Seam LF on every export |
 | **Multi-sheet** | Sheet gallery, tabs and side-by-side groups, Regroup, levels, **stitching across a match line**, PDF layer roles |
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY with and without waste, plus the combined buy list; columns, grouping, saved templates |
-| **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF**, RFI CSV/JSON |
+| **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF**, RFI CSV/JSON, Panel breakers CSV |
 | **Revisions** | Save at each bid revision, compare quantity deltas per condition/sheet/buy list, guarded restore |
 | **Markups** | Clouds, callouts, notes, highlighter, **images** (upload or marquee screenshot), stamps, **approval seals**, RFI register—separate layer, never counted |
 | **Voice** | Push-to-talk takeoff commands, recognized on-device in WebAssembly; audio never leaves the browser |
