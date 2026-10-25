@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-10-25 — panel schedules with no POLES column
+
+### Fixed
+- **Panel schedule import failed on a Revit template with `OCP SIZE` headers.** A real bid set's panel schedules (a text-layer PDF, five panels on one sheet) all came back "no circuit table header found": the breaker size was headed **OCP SIZE** and the circuit number **NO.**, the name sat under **DESIGNATION:**, and the schedule had **no POLES column** at all. All of that is read now.
+
+### Added
+- **Pole count from the merged cell's height.** With no POLES column, a breaker's pole count is how many circuit rows its cell spans: the importer takes the sheet's row borders (from the vector linework on a text-layer sheet, or from the pixels on a scan) and counts the circuit rows between the borders around the breaker's text. A cell it can't measure comes back as **Review** with "pole count not readable" — never a guess.
+- **Headings.** `OCP SIZE` / `BREAKER SIZE` (a `CIRCUIT SIZE` wire column is not the breaker), `NO.` / `NUMBER`, `DESIGNATION:` for the panel's name (up to 40 characters), and **Fault duty** / **Mains type** ratings.
+
+Verified on the five panels of that sheet (two-sided 84-position, two-sided 42-position ×2, and one-sided 12- and 6-position panels; 2- and 3-pole merged cells on both sides): every breaker count matched the drawing, in the app's production build, each panel read in under a second. The 14 scanned and flattened panels from the first release read identically.
+
 ## 2026-10-23 — panel schedules read themselves (electrical fork, Wave 4)
 
 ### Added

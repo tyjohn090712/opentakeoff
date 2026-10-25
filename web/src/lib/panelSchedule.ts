@@ -26,7 +26,7 @@
 // kind:"withheld" with a reason — never guessed into the breaker counts. The
 // approval dialog shows them; the estimator resolves or leaves them visible.
 
-import type { Rule } from "./panelRaster.js";
+import type { Rule, HRule } from "./panelRaster.js";
 
 export type Token = { str: string; x: number; y: number; h: number; w?: number };
 
@@ -116,7 +116,7 @@ const isSpareLabel = (d: string) => /\bSPARE\b/.test(up(d));
 // that span TRIP + POLES in some templates — they only count when nothing
 // specific claims the column.
 const SPECIFIC: Record<string, Role> = {
-  CKT: "ckt", CCT: "ckt", CIR: "ckt", CIRC: "ckt", CKTS: "ckt", CCTS: "ckt", "CKT#": "ckt", "CCT#": "ckt", "#": "ckt", CKTNO: "ckt", CCTNO: "ckt",
+  CKT: "ckt", CCT: "ckt", CIR: "ckt", CIRC: "ckt", CKTS: "ckt", CCTS: "ckt", "CKT#": "ckt", "CCT#": "ckt", "#": "ckt", CKTNO: "ckt", CCTNO: "ckt", NO: "ckt", NUM: "ckt", NUMBER: "ckt",
   DESCRIPTION: "desc", DESCRIPTIONS: "desc", DESC: "desc", DESCR: "desc", SERVES: "desc", SERVED: "desc", SERVING: "desc", LOADNAME: "desc",
   TRIP: "trip", AMP: "trip", AMPS: "trip", AMPERE: "trip", AMPERES: "trip", TRIPA: "trip",
   POLES: "poles", POLE: "poles", P: "poles", PL: "poles", NP: "poles", "#P": "poles",
@@ -138,7 +138,7 @@ const genericOf = (s: string): Role | null => {
   return words.length === 1 ? GENERIC[bare(words[0])] ?? null : null;
 };
 // a word that only ever appears in a header row (used to grow the header band)
-const HEADER_OTHER = /^(A|B|C|NO|NOTE|NOTES|TYPE|TOTAL|KVA|VA|LOAD|LOADKVA|PHASE|PH|WIRE|CONDUIT|LCL|CIRCUIT|KW|REMARKS|CB|BKR)$/;
+const HEADER_OTHER = /^(A|B|C|NO|NOTE|NOTES|TYPE|TOTAL|KVA|VA|LOAD|LOADKVA|PHASE|PH|WIRE|CONDUIT|LCL|CIRCUIT|KW|REMARKS|CB|BKR|OCP|SIZE|OPTIONS|OPTION)$/;
 
 // ── geometry helpers ────────────────────────────────────────────────────────
 // Cluster tokens into visual rows by y (the scheduleParse.ts rule: the running
@@ -174,7 +174,7 @@ function findHeaderBand(rows: Token[][]): { top: number; bottom: number; best: n
   let best = -1, bestN = 0;
   rows.forEach((r, i) => {
     const roles = new Set(r.map((t) => roleOf(t.str)).filter(Boolean));
-    const n = roles.size >= 3 || (roles.has("desc") && roles.has("trip")) ? roles.size : 0;
+    const n = roles.size >= 3 || (roles.has("desc") && (roles.has("trip") || roles.has("ckt"))) ? roles.size : 0;
     if (n > bestN) { best = i; bestN = n; }
   });
   if (best < 0 || bestN < 2) return null;
@@ -248,13 +248,13 @@ const probeX = (t: Token) => t.x + Math.min(tokW(t), t.h) * 0.3;
 const INFO_LABELS: [keyof PanelInfo, RegExp][] = [
   ["volts", /^(VOLTS?|VOLTAGE|SYSTEMVOLTAGE)$/],
   ["bus", /^(BUSAMPS|BUSRATING|BUS|BUSSING|BUSAMPACITY|RATING)$/],
-  ["main", /^(MAINOCPD|MAINCB|MAINBKR|MAINBREAKER|MAIN|MAINS|MAINTYPE|MCB|MLO)$/],
+  ["main", /^(MAINOCPD|MAINCB|MAINBKR|MAINBREAKER|MAIN|MAINS|MAINTYPE|MAINSTYPE|MCB|MLO)$/],
   ["mounting", /^(MOUNTING|MOUNT|MTG)$/],
-  ["aic", /^(AIC|KAIC|SCCR|AICRATING|INTERRUPTINGRATING)$/],
+  ["aic", /^(AIC|KAIC|SCCR|AICRATING|INTERRUPTINGRATING|FAULTDUTY|FAULTCURRENT|SHORTCIRCUITRATING)$/],
   ["fed_from", /^(FEDFROM|FEEDFROM|FED|SUPPLYFROM|SOURCE)$/],
   ["location", /^(LOCATION|LOC)$/],
 ];
-const ALL_LABEL_WORDS = /^(VOLTS?|VOLTAGE|BUS|AMPS|MAIN|OCPD|CB|MOUNTING|MOUNT|AIC|KAIC|SCCR|FED|FROM|FEED|LOCATION|LOC|SPD|LUGS|PHASE|WIRE|NEUTRAL|TYPE|NEMA|ENCLOSURE|FEEDS?)$/;
+const ALL_LABEL_WORDS = /^(VOLTS?|VOLTAGE|BUS|AMPS|MAIN|MAINS|OCPD|CB|MOUNTING|MOUNT|AIC|KAIC|SCCR|FED|FROM|FEED|LOCATION|LOC|SPD|LUGS|PHASE|WIRE|NEUTRAL|TYPE|NEMA|ENCLOSURE|FEEDS?|FAULT|DUTY|DESIGNATION|BRANCH|OPTIONS|GROUND|INTEGRAL|ACCESSORIES|OWNER|METERS)$/;
 
 function readInfo(rows: Token[][]): PanelInfo {
   const info: PanelInfo = {};
@@ -291,21 +291,24 @@ function readInfo(rows: Token[][]): PanelInfo {
 // words that follow "PANEL" in a banner or a label, never a panel's name
 const NOT_A_NAME = /^(SCHEDULES?|SCHED|BOARDS?|NAME|TYPE|DATA|DESIGNATION|INFO|RATINGS?|NOTES?)\b/i;
 
-// "PANEL: LP-1" / "Panel: E" / "PANELBOARD LP1A" — the token nearest above the
-// header band wins (a sheet title "PANEL SCHEDULES" further up never does:
-// "SCHEDULES" isn't a name, and it's farther away).
+// "PANEL: LP-1" / "Panel: E" / "PANELBOARD LP1A" / "DESIGNATION: SITE1-ROOM2-PNL02"
+// — the token nearest above the header band wins (a sheet title "PANEL
+// SCHEDULES" further up never does: "SCHEDULES" isn't a name, and it's farther
+// away).
+const NAME_VAL = /^[A-Z0-9][A-Z0-9\-./]{0,39}$/i;
 function readName(rows: Token[][]): string {
   for (let ri = rows.length - 1; ri >= 0; ri--) {
     const r = rows[ri];
     for (let i = 0; i < r.length; i++) {
       const s = r[i].str.trim();
-      const inline = s.match(/^PANEL(?:BOARD)?(?:\s*NAME)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-./]{0,15})$/i);
+      const inline = s.match(/^PANEL(?:BOARD)?(?:\s*NAME)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-./]{0,39})$/i);
       if (inline && /^PANEL/i.test(s) && !/^PANEL(BOARD)?:?$/i.test(s) && !NOT_A_NAME.test(inline[1])) return clean(inline[1]);
-      if (/^PANEL(BOARD)?(NAME)?:?$/i.test(bare(s)) || /^PANEL(BOARD)?:?$/i.test(s)) {
+      const lab = /^PANEL(BOARD)?(NAME)?:?$/i.test(bare(s)) || /^PANEL(BOARD)?:?$/i.test(s) || /^DESIGNATION:?$/i.test(s);
+      if (lab) {
         let j = i + 1;
         if (j < r.length && /^NAME:?$/i.test(r[j].str.trim())) j++;
         const nxt = r[j]?.str.trim().replace(/^:/, "").trim();
-        if (nxt && /^[A-Z0-9][A-Z0-9\-./]{0,15}$/i.test(nxt) && !NOT_A_NAME.test(nxt) && !ALL_LABEL_WORDS.test(bare(nxt))) return clean(nxt);
+        if (nxt && NAME_VAL.test(nxt) && !NOT_A_NAME.test(nxt) && !ALL_LABEL_WORDS.test(bare(nxt))) return clean(nxt);
       }
     }
   }
@@ -366,6 +369,14 @@ export function panelLayout(tokens: Token[], opts: { rules?: Rule[] } = {}): Pan
     else if (genericOf(t.str)) generic[ci] = genericOf(t.str);
     else if (HEADER_OTHER.test(bare(t.str)) && !/^(CB|BKR|LOAD|CIRCUIT|NO)$/.test(bare(t.str))) other[ci] = true;
   }
+  // Stacked or split header words only mean something together: a column whose
+  // header reads "OCP SIZE" holds the breaker size, while "CIRCUIT SIZE" (the
+  // wire) and "OCP OPTIONS" are not it. So the column's words are joined top to
+  // bottom and the phrase votes.
+  cols.forEach((_, i) => {
+    const words = bandToks.filter((t) => colIndexAt(cols, t.x + tokW(t) / 2) === i).sort((a, b) => a.y - b.y || a.x - b.x).map((t) => t.str).join(" ");
+    if (/\bOCP\s*SIZE\b|\bBREAKER\s*SIZE\b|\bBKR\s*SIZE\b/i.test(words)) votes[i].set("trip", (votes[i].get("trip") || 0) + 2);
+  });
   const PRI: Role[] = ["ckt", "poles", "trip", "desc"];
   cols.forEach((c, i) => {
     let best: Role | null = null, bn = 0;
@@ -470,9 +481,11 @@ export const columnOf = (cols: Col[], t: Token) => colIndexAt(cols, probeX(t));
  * Parse one panel schedule from tokens inside the marqueed region.
  * `rules` — the table's vertical rules in the same px space (vector linework
  * or panelRaster.findVerticalRules); optional, but the reliable path.
+ * `hrules` — its horizontal rules; only needed for schedules with no POLES
+ * column, where a breaker's pole count IS the height of its merged cell.
  * Returns { panel: null, reason } rather than inventing a panel.
  */
-export function parsePanelSchedule(tokens: Token[], opts: { rules?: Rule[] } = {}): PanelParse {
+export function parsePanelSchedule(tokens: Token[], opts: { rules?: Rule[]; hrules?: HRule[] } = {}): PanelParse {
   const lay = panelLayout(tokens, opts);
   if ("error" in lay) return { panel: null, reason: lay.error };
   const { rows, band, cols, sides, twoSided, pick } = lay;
@@ -600,6 +613,25 @@ export function parsePanelSchedule(tokens: Token[], opts: { rules?: Rule[] } = {
     }
     if (!rowsS.length) continue;
     if (!pitch && rowsS.length > 1) pitch = (rowsS[rowsS.length - 1].y - rowsS[0].y) / (rowsS.length - 1);
+    // No POLES column on this side (a common Revit template): a breaker's pole
+    // count is how many circuit rows its cell spans — the cell between the
+    // horizontal rules that cross the DESCRIPTION column around the item's text.
+    // A merged 3-pole cell has no rule inside it; single-pole cells are one row.
+    if (pick[s].poles === undefined && opts.hrules && opts.hrules.length) {
+      const dc = cols[pick[s].desc as number];
+      const cx = Number.isFinite(dc.x0) && Number.isFinite(dc.x1) ? (dc.x0 + dc.x1) / 2 : null;
+      if (cx !== null) {
+        const ys = opts.hrules.filter((h) => h.x0 <= cx && h.x1 >= cx).map((h) => h.y).sort((a, b) => a - b);
+        const uniq = ys.filter((y, i) => i === 0 || y - ys[i - 1] > 1.5);
+        for (const it of items[s]) {
+          if (it.poles !== null || it.marker) continue;
+          const lo = [...uniq].reverse().find((y) => y < it.y - 1), hi = uniq.find((y) => y > it.y + 1);
+          if (lo === undefined || hi === undefined) continue;
+          const n = rowsS.filter((r) => r.y > lo && r.y < hi).length;
+          if (n >= 1 && n <= 3) it.poles = n;
+        }
+      }
+    }
     const idxOf = new Map(rowsS.map((r, i) => [r.ckt, i]));
     const claimed: (string | null)[] = rowsS.map(() => null);   // row → owner tag
     const claimedBy: number[] = rowsS.map(() => -1);              // row → index in `out`

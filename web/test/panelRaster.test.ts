@@ -11,7 +11,7 @@
 // All data here is synthetic.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findVerticalRules, findHorizontalRules, rulesFromSegments, cleanForOcr, toGray } from "../src/lib/panelRaster.js";
+import { findVerticalRules, findHorizontalRules, rulesFromSegments, hRulesFromSegments, cleanForOcr, toGray } from "../src/lib/panelRaster.js";
 import { readPanelTokens, type OcrBox, type OcrRect } from "../src/lib/panelOcr.js";
 import { parsePanelSchedule } from "../src/lib/panelSchedule.js";
 
@@ -69,6 +69,21 @@ test("rulesFromSegments: cell-by-cell borders merge, short strokes drop, box cli
   assert.equal(rules.length, 2);
   assert.ok(Math.abs(rules[0].x - 50) < 1 && rules[0].y0 === 10 && rules[0].y1 === 70, "merged + region-local");
   assert.ok(rules[1].y0 === 0 && rules[1].y1 === 100, "clipped to the box");
+});
+
+test("hRulesFromSegments: row borders drawn cell by cell merge along x, clip to the box, drop slivers", () => {
+  const segs = [
+    // one row border drawn as three cells
+    100, 60, 160, 60, 160, 60.3, 230, 60.3, 230, 60, 300, 60,
+    // a border in a merged cell: only the right part exists
+    400, 80, 500, 80,
+    // too short, vertical, and outside the box
+    120, 90, 124, 90, 150, 100, 150, 140, 100, 400, 500, 400,
+  ];
+  const rules = hRulesFromSegments(segs, { x0: 90, y0: 40, x1: 480, y1: 200 });
+  assert.equal(rules.length, 2);
+  assert.ok(Math.abs(rules[0].y - 20.1) < 0.5 && rules[0].x0 === 10 && rules[0].x1 === 210, JSON.stringify(rules[0]));
+  assert.ok(rules[1].y === 40 && rules[1].x0 === 310 && rules[1].x1 === 390, "clipped to the box");
 });
 
 test("cleanForOcr: rules erased, a glyph touching one keeps its body, shading lifts", () => {

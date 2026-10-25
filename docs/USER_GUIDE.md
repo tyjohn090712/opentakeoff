@@ -363,6 +363,8 @@ A panelboard schedule already lists every breaker you buy. Choose **⋯ › Impo
 
 - **Two-sided and one-sided tables both read.** Odd circuits down the left and even down the right is the usual layout; a single CKT / DESCRIPTION / TRIP / POLES table works too.
 - **Multi-pole breakers take their rows.** Whether the schedule writes `--` on the extra rows or merges the cell across them, a 2-pole breaker occupies two circuit numbers and a 3-pole breaker three.
+- **No POLES column? The cell's height is the pole count.** Some schedules (a common Revit template) show no pole count at all: a tall merged cell spanning three circuit rows is a 3-pole breaker. OpenTakeoff measures the cell between the sheet's row borders. If it can't measure a cell, the row arrives as **Review** instead of a guess.
+- **Different headings are fine.** The breaker size can be headed **TRIP**, **AMP**, or **OCP SIZE**; the circuit number **CKT**, **CCT**, **#**, or **NO.**; the panel's name comes from **Panel:**, **Panelboard:**, or **Designation:**. Ratings such as **Fault duty** and **Main type** are read too.
 - **Spares are breakers; spaces aren't.** **Spare** counts toward the breakers you buy. **Space**, **Prepared space**, and a blank row count as open pole positions.
 - **Nothing is guessed.** A row that names a load without a readable breaker size, a size that isn't a standard rating (NEC 240.6(A)), or a pole count outside 1–3 arrives as **Review** with the reason. It stays out of the counts until you enter the trip and poles in the dialog—the row then counts as a load, or as a spare if its description says so.
 

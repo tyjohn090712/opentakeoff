@@ -47,7 +47,7 @@ import { isCanvasBusy } from "../lib/canvasBusy";
 import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
 import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
 import { parsePanelSchedule } from "../lib/panelSchedule";
-import { findVerticalRules, findHorizontalRules, rulesFromSegments, cleanForOcr, toGray } from "../lib/panelRaster";
+import { findVerticalRules, findHorizontalRules, rulesFromSegments, hRulesFromSegments, cleanForOcr, toGray } from "../lib/panelRaster";
 import { readPanelTokens } from "../lib/panelOcr";
 import { sanitizePanelSchedules, mintPanelId } from "../lib/panelSchedules.js";
 import { normalizeTag } from "../lib/scheduleEdit";
@@ -6762,7 +6762,7 @@ export default function TakeoffCanvas() {
       if (seq !== renderSeqRef.current) return;
       const tokens = extractRegionText(tc, vp, rect).map((t) => ({ ...t, x: t.x - rect.x0, y: t.y - rect.y0 }));
       const segs = vectorSegsRef.current.get(panel.key);
-      let res = tokens.length ? parsePanelSchedule(tokens, { rules: segs ? rulesFromSegments(segs, rect) : [] }) : null;
+      let res = tokens.length ? parsePanelSchedule(tokens, { rules: segs ? rulesFromSegments(segs, rect) : [], hrules: segs ? hRulesFromSegments(segs, rect) : [] }) : null;
       let source = "text";
       // 2 — no readable table in the text: read the pixels on this machine
       if (!res?.panel) {
@@ -6779,7 +6779,7 @@ export default function TakeoffCanvas() {
         const toks = await readPanelTokens(img.w, img.h, vr, makeRecognizer(worker, { bin, gray }),
           (done, total) => setCommitMsg(`Reading the panel schedule on this computer — column ${done} of ${total}…`));
         if (seq !== renderSeqRef.current) return;
-        res = parsePanelSchedule(toks, { rules: vr });
+        res = parsePanelSchedule(toks, { rules: vr, hrules: hr });
         source = "ocr";
       }
       if (!res.panel) { setCommitMsg(`No panel schedule found in that box — ${res.reason}. Drag around ONE panel: its title, header row and circuit rows.`); return; }

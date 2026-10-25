@@ -270,3 +270,92 @@ test("a 'PANELBOARD SCHEDULE' banner is never the panel's name", () => {
   toks.push({ str: "PANEL: LP-2B", x: 4, y: 24, h: H });
   assert.equal((parsePanelSchedule(toks, { rules: RV_RULES }) as { panel: { name: string } }).panel.name, "LP-2B");
 });
+
+// ── a template with NO poles column: "OCP SIZE" header, DESIGNATION name, and a
+// breaker's pole count is the height of its merged cell (the rules say how tall)
+const OC = (() => {
+  const c = (name: string, x0: number, x1: number) => ({ name, x0, x1 });
+  return {
+    LNO: c("NO.", 0, 30), LDESC: c("DESCRIPTION", 30, 230), LSIZE: c("SIZE", 230, 270), LOPT: c("OPTIONS", 270, 310),
+    A1: c("A", 310, 350), B1: c("B", 350, 390), C1: c("C", 390, 430), A2: c("A", 430, 470), B2: c("B", 470, 510), C2: c("C", 510, 550),
+    ROPT: c("OPTIONS", 550, 590), RSIZE: c("SIZE", 590, 630), RDESC: c("DESCRIPTION", 630, 830), RNO: c("NO.", 830, 860),
+  };
+})();
+const OC_COLS = Object.values(OC);
+const ocY = (k: number) => 100 + 12 * k;           // row k's text baseline; the row's cell spans ocY(k)-6 … ocY(k)+6
+function ocPanel(left: [string, string, number][], right: [string, string, number][], n: number) {
+  // each entry: [description, trip, rowsSpanned] in reading order; a span > 1 is ONE merged cell
+  const toks: Token[] = [];
+  const hr: { y: number; x0: number; x1: number }[] = [];
+  toks.push({ str: "PANELBOARD SCHEDULE:", x: 4, y: 12, h: 14 });
+  toks.push({ str: "DESIGNATION:", x: 60, y: 30, h: H }, { str: "SITE1-ROOM2-PNL07", x: 130, y: 30, h: H, w: 100 });
+  toks.push({ str: "MAIN TYPE:", x: 300, y: 30, h: H }, { str: "225 A MCB", x: 360, y: 30, h: H, w: 50 });
+  toks.push({ str: "FAULT DUTY:", x: 440, y: 30, h: H }, { str: "10 kA", x: 500, y: 30, h: H, w: 30 });
+  toks.push({ str: "BUS AMPS:", x: 300, y: 42, h: H }, { str: "225 A", x: 360, y: 42, h: H, w: 30 });
+  for (const col of [OC.LSIZE, OC.LOPT, OC.RSIZE, OC.ROPT]) toks.push(...cell(col, "OCP", 58));
+  for (const col of OC_COLS) toks.push(...cell(col, col.name, 70));
+  for (let k = 0; k < n; k++) toks.push(...cell(OC.LNO, String(2 * k + 1), ocY(k)), ...cell(OC.RNO, String(2 * k + 2), ocY(k)));
+  const side = (items: [string, string, number][], desc: ColSpec, size: ColSpec, rules: [number, number]) => {
+    let k = 0;
+    const interior = new Set<number>();   // boundaries (top of row j) hidden inside a merged cell
+    for (const [d, t, span] of items) {
+      const mid = ocY(k) + 12 * (span - 1) / 2;   // vertical center of the merged cell
+      toks.push(...cell(desc, d, mid), ...cell(size, t, mid));
+      for (let j = k + 1; j < k + span; j++) interior.add(j);
+      k += span;
+    }
+    for (let j = 0; j <= n; j++) if (!interior.has(j)) hr.push({ y: ocY(j) - 6, x0: rules[0], x1: rules[1] });
+  };
+  side(left, OC.LDESC, OC.LSIZE, [0, 310]);
+  side(right, OC.RDESC, OC.RSIZE, [550, 860]);
+  const rules = [...new Set(OC_COLS.flatMap((c) => [c.x0, c.x1]))].map((x) => ({ x, y0: 50, y1: ocY(n) }));
+  return { toks, rules, hr };
+}
+
+test("no POLES column: pole count is the merged cell's height; OCP SIZE is the breaker; DESIGNATION names the panel", () => {
+  const L: [string, string, number][] = [["SPARE", "20 A", 1], ["LOAD A", "20 A", 1], ["AHU-1", "60 A", 3], ["SPACE", "--", 1], ["EF-1", "30 A", 2], ["SPARE", "20 A", 1], ["RTU-2", "20 A", 1]];
+  const R: [string, string, number][] = [["PUMP-1", "25 A", 2], ...Array.from({ length: 8 }, () => ["SPARE", "20 A", 1] as [string, string, number])];
+  const { toks, rules, hr } = ocPanel(L, R, 10);
+  const res = parsePanelSchedule(toks, { rules, hrules: hr });
+  assert.ok(res.panel, res.panel ? "" : (res as { reason: string }).reason);
+  const p = res.panel;
+  assert.equal(p.name, "SITE1-ROOM2-PNL07");
+  assert.equal(p.layout, "two-sided");
+  assert.equal(p.positions, 20);
+  assert.equal(p.info.main, "225 A MCB");
+  assert.equal(p.info.aic, "10 kA");
+  assert.equal(p.info.bus, "225 A");
+  assert.deepEqual(by(p.circuits, 5)?.ckts, [5, 7, 9], "a 3-row merged cell is a 3-pole breaker");
+  assert.equal(by(p.circuits, 5)?.trip, 60);
+  assert.equal(by(p.circuits, 5)?.poles, 3);
+  assert.deepEqual(by(p.circuits, 13)?.ckts, [13, 15], "a 2-row merged cell is a 2-pole breaker");
+  assert.equal(by(p.circuits, 13)?.description, "EF-1");
+  assert.deepEqual(by(p.circuits, 2)?.ckts, [2, 4], "merged on the right side too");
+  assert.equal(by(p.circuits, 11)?.kind, "space");
+  assert.equal(by(p.circuits, 1)?.kind, "spare");
+  const t = panelTotals(p.circuits);
+  assert.equal(t.withheld, 0);
+  assert.deepEqual(t.breakers.map((b) => `${breakerLabel(b.trip, b.poles)}×${b.count}`), ["20A 1P×12", "25A 2P×1", "30A 2P×1", "60A 3P×1"]);
+});
+
+test("no POLES column and no rules to measure with: the pole count is withheld, not guessed", () => {
+  const L: [string, string, number][] = [["LOAD A", "20 A", 1], ["AHU-1", "60 A", 2], ["SPARE", "20 A", 1]];
+  const { toks, rules } = ocPanel(L, [["SPARE", "20 A", 1], ["SPARE", "20 A", 1], ["SPARE", "20 A", 1], ["SPARE", "20 A", 1]], 4);
+  const res = parsePanelSchedule(toks, { rules });
+  assert.ok(res.panel);
+  const ahu = res.panel.circuits.find((c) => c.description === "AHU-1");
+  assert.equal(ahu?.kind, "withheld");
+  assert.match(ahu?.reason ?? "", /pole/);
+});
+
+test("a CIRCUIT SIZE (wire) column is never mistaken for the breaker", () => {
+  const { toks, rules, hr } = ocPanel([["LOAD A", "20 A", 1], ["SPARE", "20 A", 1]], [["SPARE", "20 A", 1], ["SPARE", "20 A", 1]], 2);
+  // retitle the left OPTIONS column "CIRCUIT SIZE" and fill it with wire text
+  for (const t of toks) if (t.x > OC.LOPT.x0 && t.x < OC.LOPT.x1 && t.y === 58) t.str = "CIRCUIT";
+  for (const t of toks) if (t.x > OC.LOPT.x0 && t.x < OC.LOPT.x1 && t.y === 70) t.str = "SIZE";
+  toks.push(...cell(OC.LOPT, "--", ocY(1)));
+  const res = parsePanelSchedule(toks, { rules, hrules: hr });
+  assert.ok(res.panel, res.panel ? "" : (res as { reason: string }).reason);
+  assert.equal(by(res.panel.circuits, 1)?.trip, 20);
+  assert.equal(by(res.panel.circuits, 3)?.kind, "spare");
+});
