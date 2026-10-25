@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { findVerticalRules, findHorizontalRules, rulesFromSegments, hRulesFromSegments, cleanForOcr, toGray } from "../src/lib/panelRaster.js";
 import { readPanelTokens, type OcrBox, type OcrRect } from "../src/lib/panelOcr.js";
-import { parsePanelSchedule } from "../src/lib/panelSchedule.js";
+import { parsePanelSchedule, panelTotals } from "../src/lib/panelSchedule.js";
 
 function blank(w: number, h: number) { return new Uint8Array(w * h).fill(255); }
 function vline(g: Uint8Array, w: number, x: number, y0: number, y1: number, thick = 2, v = 0) {
@@ -172,4 +172,25 @@ test("readPanelTokens: an implausible TRIP gets a single-line second look", asyn
   const c5 = res.panel.circuits.find((c) => c.ckts.includes(5));
   assert.equal(c5?.trip, 30);
   assert.equal(c5?.kind, "load");
+});
+
+test("readPanelTokens: a two-line description in a merged cell gets ONE breaker size, not one per line", async () => {
+  // a 3-row merged cell: two description lines (rows 1 and 3) around a single TRIP centered on row 2
+  const words: Word[] = [
+    { text: "PANEL:", x: 4, y: 20 }, { text: "LP-3", x: 50, y: 20 },
+    { text: "CKT", x: 4, y: 60 }, { text: "DESCRIPTION", x: 60, y: 60 }, { text: "POLES", x: 244, y: 60 }, { text: "TRIP", x: 284, y: 60 },
+    { text: "TRIP", x: 484, y: 60 }, { text: "POLES", x: 534, y: 60 }, { text: "DESCRIPTION", x: 590, y: 60 }, { text: "CKT", x: 774, y: 60 },
+  ];
+  for (let k = 0; k < 6; k++) words.push({ text: String(2 * k + 1), x: 4, y: 80 + 20 * k }, { text: String(2 * k + 2), x: 774, y: 80 + 20 * k });
+  words.push({ text: "TEMP POWER", x: 44, y: 90 }, { text: "SITE-PNL01", x: 44, y: 130 }, { text: "125A", x: 284, y: 110 }, { text: "3", x: 244, y: 110 });
+  for (let k = 3; k < 6; k++) words.push({ text: "SPARE", x: 44, y: 80 + 20 * k }, { text: "20A", x: 284, y: 80 + 20 * k }, { text: "1", x: 244, y: 80 + 20 * k });
+  for (let k = 0; k < 6; k++) words.push({ text: "SPARE", x: 574, y: 80 + 20 * k }, { text: "20A", x: 484, y: 80 + 20 * k }, { text: "1", x: 534, y: 80 + 20 * k });
+  const eng = fakeEngine(words, null);
+  const toks = await readPanelTokens(810, 400, RULES, eng.recognize);
+  const trips = toks.filter((t) => /125/.test(t.str));
+  assert.equal(trips.length, 1, "one 125A reading for the cell, however many description lines it has");
+  const res = parsePanelSchedule(toks, { rules: RULES });
+  assert.ok(res.panel);
+  assert.equal(res.panel.circuits.filter((c) => c.trip === 125).length, 1);
+  assert.equal(panelTotals(res.panel.circuits).withheld, 0);
 });

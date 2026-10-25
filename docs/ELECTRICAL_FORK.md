@@ -54,7 +54,7 @@ Code: `web/src/lib/panelSchedule.ts` (parser, pure), `panelRaster.ts` (rules, OC
 
 Not done / next:
 - **A third template, found by testing a real Revit text-layer sheet (five panels):** breaker size headed `OCP SIZE`, circuit `NO.`, name under `DESIGNATION:`, a `CIRCUIT SIZE` wire column that must not be mistaken for the breaker, and **no POLES column** — pole count is the merged cell's height, measured from the row borders (`hRulesFromSegments` for vector sheets, the pixel rule finder for scans). The first release read none of these panels ("no circuit table header found"); all five now read exactly. Lesson kept: each new template can fail at the header, so keep testing real sheets from different engineers and offices.
-- **Still to try:** a scanned or flattened sheet of the no-POLES template (the pole-count measurement uses the pixel rule finder there, untested on a real one).
+- **Scanned/flattened version of that template — done on a clean raster of the real sheet** (all five panels exact, nothing withheld, after two bugs it exposed: a dash-filled "CIRCUIT SIZE" column taken for POLES, and a breaker size re-read once per description line of a merged cell). Still to try: a *physically* scanned copy (skew, noise) of it. OCR confuses `O`/`0` in panel names — the name is editable in the dialog.
 - **One marquee, many panels**: a sheet usually carries 4–6 panels; today it's one box per panel (the tool stays armed between them).
 - **Highlight the source row** on the sheet from the dialog (the region and row y are already stored).
 - **Feeder / homerun link**: panel ↔ `EMT-BRANCH` runs and fixture counts by circuit — the bridge to Wave 3.2.

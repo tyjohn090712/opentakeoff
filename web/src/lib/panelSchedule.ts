@@ -376,6 +376,7 @@ export function panelLayout(tokens: Token[], opts: { rules?: Rule[] } = {}): Pan
   cols.forEach((_, i) => {
     const words = bandToks.filter((t) => colIndexAt(cols, t.x + tokW(t) / 2) === i).sort((a, b) => a.y - b.y || a.x - b.x).map((t) => t.str).join(" ");
     if (/\bOCP\s*SIZE\b|\bBREAKER\s*SIZE\b|\bBKR\s*SIZE\b/i.test(words)) votes[i].set("trip", (votes[i].get("trip") || 0) + 2);
+    else if (/\bCIRCUIT\s*SIZE\b|\bWIRE\s*SIZE\b|\bCONDUCTOR/i.test(words)) other[i] = true;
   });
   const PRI: Role[] = ["ckt", "poles", "trip", "desc"];
   cols.forEach((c, i) => {
@@ -489,6 +490,19 @@ export function parsePanelSchedule(tokens: Token[], opts: { rules?: Rule[]; hrul
   const lay = panelLayout(tokens, opts);
   if ("error" in lay) return { panel: null, reason: lay.error };
   const { rows, band, cols, sides, twoSided, pick } = lay;
+  // A POLES column that never holds a 1, 2 or 3 is not a POLES column: a wire-
+  // size column full of dashes was taken for one, on a scan that dropped its
+  // header words. Without it the pole count falls back to the merged cell's
+  // height, as on every schedule that has no such column.
+  {
+    const body = rows.slice(band.bottom + 1);
+    for (const sd of sides) {
+      const pc = pick[sd].poles;
+      if (pc === undefined) continue;
+      const cells = body.map((r) => r.filter((t) => colIndexAt(cols, probeX(t)) === pc).map((t) => t.str.trim()).join(" ")).filter(Boolean);
+      if (cells.length >= 3 && !cells.some((c) => parsePoles(c) !== null || parseTrip(c)?.poles !== undefined)) delete pick[sd].poles;
+    }
+  }
 
   // ── data rows ──
   // The table ends where its circuit numbers end. Rows below the last number

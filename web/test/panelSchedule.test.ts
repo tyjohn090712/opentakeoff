@@ -359,3 +359,18 @@ test("a CIRCUIT SIZE (wire) column is never mistaken for the breaker", () => {
   assert.equal(by(res.panel.circuits, 1)?.trip, 20);
   assert.equal(by(res.panel.circuits, 3)?.kind, "spare");
 });
+
+test("a 'POLES' column that never holds 1–3 isn't one: pole counts fall back to the cell height", () => {
+  // the left OPTIONS column carries the header words a scan can drop, and only dashes
+  const L: [string, string, number][] = [["LOAD A", "20 A", 1], ["AHU-1", "60 A", 2], ["SPARE", "20 A", 1]];
+  const R: [string, string, number][] = [["SPARE", "20 A", 1], ["SPARE", "20 A", 1], ["SPARE", "20 A", 1], ["SPARE", "20 A", 1]];
+  const { toks, rules, hr } = ocPanel(L, R, 4);
+  const kept = toks.filter((t) => !(t.x > OC.LOPT.x0 && t.x < OC.LOPT.x1 && (t.y === 58 || t.y === 70)));   // header words gone
+  for (let k = 0; k < 4; k++) kept.push(...cell(OC.LOPT, "--", ocY(k)));
+  const res = parsePanelSchedule(kept, { rules, hrules: hr });
+  assert.ok(res.panel, res.panel ? "" : (res as { reason: string }).reason);
+  const ahu = res.panel.circuits.find((c) => c.description === "AHU-1");
+  assert.equal(ahu?.kind, "load");
+  assert.equal(ahu?.poles, 2, "measured from the merged cell, not 'not readable'");
+  assert.equal(panelTotals(res.panel.circuits).withheld, 0);
+});
