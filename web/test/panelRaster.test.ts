@@ -11,9 +11,9 @@
 // All data here is synthetic.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findVerticalRules, findHorizontalRules, rulesFromSegments, cleanForOcr, toGray } from "../src/lib/panelRaster.js";
+import { findVerticalRules, findHorizontalRules, rulesFromSegments, hRulesFromSegments, cleanForOcr, toGray } from "../src/lib/panelRaster.js";
 import { readPanelTokens, type OcrBox, type OcrRect } from "../src/lib/panelOcr.js";
-import { parsePanelSchedule } from "../src/lib/panelSchedule.js";
+import { parsePanelSchedule, panelTotals } from "../src/lib/panelSchedule.js";
 
 function blank(w: number, h: number) { return new Uint8Array(w * h).fill(255); }
 function vline(g: Uint8Array, w: number, x: number, y0: number, y1: number, thick = 2, v = 0) {
@@ -69,6 +69,21 @@ test("rulesFromSegments: cell-by-cell borders merge, short strokes drop, box cli
   assert.equal(rules.length, 2);
   assert.ok(Math.abs(rules[0].x - 50) < 1 && rules[0].y0 === 10 && rules[0].y1 === 70, "merged + region-local");
   assert.ok(rules[1].y0 === 0 && rules[1].y1 === 100, "clipped to the box");
+});
+
+test("hRulesFromSegments: row borders drawn cell by cell merge along x, clip to the box, drop slivers", () => {
+  const segs = [
+    // one row border drawn as three cells
+    100, 60, 160, 60, 160, 60.3, 230, 60.3, 230, 60, 300, 60,
+    // a border in a merged cell: only the right part exists
+    400, 80, 500, 80,
+    // too short, vertical, and outside the box
+    120, 90, 124, 90, 150, 100, 150, 140, 100, 400, 500, 400,
+  ];
+  const rules = hRulesFromSegments(segs, { x0: 90, y0: 40, x1: 480, y1: 200 });
+  assert.equal(rules.length, 2);
+  assert.ok(Math.abs(rules[0].y - 20.1) < 0.5 && rules[0].x0 === 10 && rules[0].x1 === 210, JSON.stringify(rules[0]));
+  assert.ok(rules[1].y === 40 && rules[1].x0 === 310 && rules[1].x1 === 390, "clipped to the box");
 });
 
 test("cleanForOcr: rules erased, a glyph touching one keeps its body, shading lifts", () => {
@@ -157,4 +172,25 @@ test("readPanelTokens: an implausible TRIP gets a single-line second look", asyn
   const c5 = res.panel.circuits.find((c) => c.ckts.includes(5));
   assert.equal(c5?.trip, 30);
   assert.equal(c5?.kind, "load");
+});
+
+test("readPanelTokens: a two-line description in a merged cell gets ONE breaker size, not one per line", async () => {
+  // a 3-row merged cell: two description lines (rows 1 and 3) around a single TRIP centered on row 2
+  const words: Word[] = [
+    { text: "PANEL:", x: 4, y: 20 }, { text: "LP-3", x: 50, y: 20 },
+    { text: "CKT", x: 4, y: 60 }, { text: "DESCRIPTION", x: 60, y: 60 }, { text: "POLES", x: 244, y: 60 }, { text: "TRIP", x: 284, y: 60 },
+    { text: "TRIP", x: 484, y: 60 }, { text: "POLES", x: 534, y: 60 }, { text: "DESCRIPTION", x: 590, y: 60 }, { text: "CKT", x: 774, y: 60 },
+  ];
+  for (let k = 0; k < 6; k++) words.push({ text: String(2 * k + 1), x: 4, y: 80 + 20 * k }, { text: String(2 * k + 2), x: 774, y: 80 + 20 * k });
+  words.push({ text: "TEMP POWER", x: 44, y: 90 }, { text: "SITE-PNL01", x: 44, y: 130 }, { text: "125A", x: 284, y: 110 }, { text: "3", x: 244, y: 110 });
+  for (let k = 3; k < 6; k++) words.push({ text: "SPARE", x: 44, y: 80 + 20 * k }, { text: "20A", x: 284, y: 80 + 20 * k }, { text: "1", x: 244, y: 80 + 20 * k });
+  for (let k = 0; k < 6; k++) words.push({ text: "SPARE", x: 574, y: 80 + 20 * k }, { text: "20A", x: 484, y: 80 + 20 * k }, { text: "1", x: 534, y: 80 + 20 * k });
+  const eng = fakeEngine(words, null);
+  const toks = await readPanelTokens(810, 400, RULES, eng.recognize);
+  const trips = toks.filter((t) => /125/.test(t.str));
+  assert.equal(trips.length, 1, "one 125A reading for the cell, however many description lines it has");
+  const res = parsePanelSchedule(toks, { rules: RULES });
+  assert.ok(res.panel);
+  assert.equal(res.panel.circuits.filter((c) => c.trip === 125).length, 1);
+  assert.equal(panelTotals(res.panel.circuits).withheld, 0);
 });

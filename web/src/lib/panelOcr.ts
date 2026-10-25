@@ -110,13 +110,19 @@ export async function readPanelTokens(
       for (const t of st.toks) if (!plausible[role](t.str)) ys.add(t.y);
       for (const d of descStrip?.toks ?? []) {
         if (dashy(d.str) || /\bSPACE\b/i.test(d.str)) continue;
-        if (!st.toks.some((t) => Math.abs(t.y - d.y) < 0.6 * lineH)) ys.add(d.y);
+        // "near" reaches 1.6 line heights: one breaker serves a whole merged cell,
+        // so a two-line description has ONE size, centered between its lines. The
+        // next row's cell is ≥ 1.9 line heights away, so it doesn't mask a miss.
+        if (!st.toks.some((t) => Math.abs(t.y - d.y) < 1.6 * lineH)) ys.add(d.y);
       }
       for (const y of ys) {
         const rect = { left: st.rect.left, top: Math.max(0, Math.round(y - 1.5 * lineH)), width: st.rect.width, height: Math.round(2 * lineH) };
         const got = (await recognize(rect, "line")).map(toToken).filter((t): t is Token => !!t);
         const text = got.map((t) => t.str).join(" ").trim();
         if (!text || !plausible[role](text) || dashy(text)) continue;
+        // a cell can be asked about twice (once per line of its description):
+        // an identical reading already within one cell's reach is the same cell
+        if (st.toks.some((t) => Math.abs(t.y - y) < 1.6 * lineH && t.str.replace(/\s+/g, "") === text.replace(/\s+/g, "") && plausible[role](t.str) && !dashy(t.str))) continue;
         st.toks = st.toks.filter((t) => Math.abs(t.y - y) >= 0.6 * lineH);
         st.toks.push({ str: text, x: rect.left, y, h: lineH, w: rect.width });
       }

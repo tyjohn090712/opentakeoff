@@ -91,6 +91,52 @@ export function rulesFromSegments(
   return mergeRules(pieces, 1, 2).filter((r) => r.y1 - r.y0 >= minLen);
 }
 
+/**
+ * Horizontal rules from vector linework, region-local, with cell-by-cell
+ * borders merged along x (a row border drawn one cell at a time is one rule).
+ * Only the segments' y and x-extent are kept: the parser asks which rules
+ * cross a given column.
+ */
+export function hRulesFromSegments(
+  segs: ArrayLike<number>,
+  rect: { x0: number; y0: number; x1: number; y1: number },
+  opts: { minLen?: number } = {},
+): HRule[] {
+  const x0 = Math.min(rect.x0, rect.x1), x1 = Math.max(rect.x0, rect.x1);
+  const y0 = Math.min(rect.y0, rect.y1), y1 = Math.max(rect.y0, rect.y1);
+  const pieces: HRule[] = [];
+  for (let i = 0; i + 3 < segs.length; i += 4) {
+    const ax = segs[i], ay = segs[i + 1], bx = segs[i + 2], by = segs[i + 3];
+    if (Math.abs(ay - by) > 0.75) continue;
+    const y = (ay + by) / 2;
+    if (y < y0 || y > y1) continue;
+    const s0 = Math.max(x0, Math.min(ax, bx)), s1 = Math.min(x1, Math.max(ax, bx));
+    if (s1 - s0 < 2) continue;
+    pieces.push({ y: y - y0, x0: s0 - x0, x1: s1 - x0 });
+  }
+  // cluster pieces into rows by y first (a border drawn cell by cell can jitter
+  // a fraction of a pixel), then merge along x inside each — order-independent
+  pieces.sort((a, b) => a.y - b.y);
+  const clusters: HRule[][] = [];
+  for (const p of pieces) {
+    const last = clusters[clusters.length - 1];
+    const mean = last ? last.reduce((a, q) => a + q.y, 0) / last.length : 0;
+    if (last && p.y - mean <= 1) last.push(p); else clusters.push([p]);
+  }
+  const out: HRule[] = [];
+  for (const cl of clusters) {
+    const y = cl.reduce((a, q) => a + q.y, 0) / cl.length;
+    cl.sort((a, b) => a.x0 - b.x0);
+    let cur: HRule | null = null;
+    for (const q of cl) {
+      if (cur && q.x0 <= cur.x1 + 2) cur.x1 = Math.max(cur.x1, q.x1);
+      else { cur = { y, x0: q.x0, x1: q.x1 }; out.push(cur); }
+    }
+  }
+  const minLen = opts.minLen ?? 8;
+  return out.filter((h) => h.x1 - h.x0 >= minLen);
+}
+
 /** RGBA (canvas ImageData) → grayscale bytes, luma-weighted. */
 export function toGray(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number): Uint8Array {
   const g = new Uint8Array(w * h);
