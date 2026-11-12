@@ -235,7 +235,10 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             {lm && <span title={`Linked to “${lm.name}” in the material library — amber fields differ from the library values`} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
             <input name="material-name" value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
             {ov("name") && rv(m, "name")}
-            <span style={{ color: "var(--ink-muted)" }}>1</span>
+            <input name="material-mult" type="number" min="0" step="any" value={m.mult === 0 ? "" : (m.mult ?? 1)}
+              onChange={(e) => onUpdate(m.id, { mult: Math.max(0, parseFloat(e.target.value) || 0) })}
+              title="How many of this line per basis unit — 3 for three conductors per LF of raceway. Leave at 1 for the usual “1 unit per N”."
+              style={{ ...ip, width: 40 }} />
             <input name="material-unit" value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
             {ov("unit") && rv(m, "unit")}
             <span style={{ color: "var(--ink-muted)" }}>per</span>
@@ -749,7 +752,7 @@ function TakeoffsPanel({
   matLib, matLibById, linkedCountById,
   panelPrefs, onPanelPrefs, reassigning, epoch, clearSelectionRef,
   onActivate, onSetActive, onLocate,
-  onAddCondition, onDeleteCondition, onUpdateCond, onSetCondParam, onAssignAttr,
+  onAddCondition, onAddRaceway, onDeleteCondition, onUpdateCond, onSetCondParam, onAssignAttr,
   onAddMaterial, onUpdateMaterial, onRemoveMaterial,
   onDuplicateCondition, onSplitCondition, onFollowFamilyRow, onRestoreDroppedRow,
   onDeriveTransitions, onLocateTransition,
@@ -1148,8 +1151,10 @@ function TakeoffsPanel({
             </React.Fragment>
           ))}
           {searchMiss && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions match “{condQuery}”.</div>}
-          <div style={{ padding: "6px 12px", borderTop: "1px solid var(--ink-faint)" }}>
-            <button onClick={onAddCondition} style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
+          <div style={{ padding: "6px 12px", borderTop: "1px solid var(--ink-faint)", display: "flex", gap: 6 }}>
+            <button onClick={onAddCondition} style={{ flex: 1, padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
+            <button onClick={onAddRaceway} title="Pick raceway type, size, conductors and mounting — get a ready linear condition like “3/4 EMT 3-#10 CONC”"
+              style={{ flex: 1, padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ raceway</button>
           </div>
           <div style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 10.5 }}>
             {keyText("Select a shape on the plan, then ⧉ Copy / ⎘ Paste (⌘C / ⌘V) — it lands on the sheet under your cursor.")}

@@ -84,10 +84,14 @@ export function conditionTotals(conditions, shapes, ctx = null) {
     // seam tape). Coverage comes off the product data sheet.
     const materials = (c.materials || []).filter((m) => m && m.name).map((m) => {
       const per = Math.max(0, Number(m.per) || 0);
-      const basisVal = m.basis === "linear" ? lf : m.basis === "count" ? ea : m.basis === "seam_lf" ? seam : total;
+      // `mult` = how many of this line per basis unit — 3 conductors per LF of
+      // raceway. It scales THIS line only (the condition's ×N would scale the
+      // raceway footage too). Absent or ≤ 0 means 1: the plain "basis ÷ per".
+      const lineMult = Number(m.mult) > 0 ? Number(m.mult) : 1;
+      const basisVal = (m.basis === "linear" ? lf : m.basis === "count" ? ea : m.basis === "seam_lf" ? seam : total) * lineMult;
       let qty = per > 0 ? basisVal / per : 0;
       qty = m.round === false ? round2(qty) : Math.ceil(qty - 1e-9);
-      return { name: m.name, unit: m.unit || "", per, basis: m.basis || "area", round: m.round !== false, note: m.note || "", basis_qty: round2(basisVal), qty };
+      return { name: m.name, unit: m.unit || "", per, basis: m.basis || "area", round: m.round !== false, note: m.note || "", basis_qty: round2(basisVal), qty, ...(lineMult !== 1 ? { mult: lineMult } : {}) };
     });
     return {
       id: c.id, finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch,
@@ -422,7 +426,7 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // upstream metric contract; the report panel carries the footnote.
   const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
   const perCond = [];
-  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, `${m.mult || 1} ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
   if (perCond.length) {
     lines.push("");
     lines.push(["Finish", "Material", "Qty", "Unit", "Coverage", "Note"].map(esc).join(","));

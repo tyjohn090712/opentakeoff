@@ -210,7 +210,7 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
   const materials = [["Finish", "Material", "Qty", "Unit", "Coverage", "Note"]];
   for (const r of rows) for (const m of (r.materials || [])) {
-    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+    materials.push([r.finish_tag, m.name, m.qty, m.unit, `${m.mult || 1} ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
   }
   const combined = materialsSummary(rows);
   if (combined.length) {

@@ -253,6 +253,7 @@ Open **Supporting Materials** on a condition. Two free-text fields sit above the
 Below that, list what actually goes on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each line carries:
 
 - a **coverage rate**—*1 unit per N*—and a **basis**: floor SF, linear LF, each, or **seam LF**;
+- a **count**, the small number before the unit (1 unless you change it), for a line that comes several to each unit of basis: three conductors per LF of raceway is *3 lf per 1 LF*. It scales that one line. The condition's **×N** scales everything on the condition, the footage included;
 - a **round up** flag (on by default—you buy whole buckets and bags);
 - a **preset picker** for adhesive and mortar lines: real trowel-notch and roller spread rates (PSA rollers at 300 SF/gal down to coarse wood notches at 40 SF/gal; mortar trowels from 90 to 30 SF per 50-lb bag). Generic industry-typical values—always verify against the product data sheet;
 - for **grout** lines, an inline **calculator**: enter tile L × W × thickness, joint width (1/32″–1/2″), and bag weight, and the SF/bag rate derives itself, writing its work into the note (`12×24×3/8″ @ 1/8″ · 25 lb`);
@@ -268,6 +269,24 @@ whole length; the same square footage as two separate 10-ft rooms seams not at a
 percentage-of-perimeter rule most estimators fall back on can't tell those two jobs apart.
 Set the condition's roll goods first: without a roll setup, or with nothing traced yet, a seam
 LF line reads **0**, which means *needs a layout* rather than a number you shouldn't trust.
+
+### Raceway runs — `+ raceway`
+
+A run is priced as one assembly—*3/4 EMT, 3 #10, on concrete*—so that's how you pick it. **+ raceway** (beside **+ condition**, in the top bar and in the Takeoffs panel) asks for:
+
+- the **raceway**: EMT, rigid steel, IMC, PVC Sch 40, flex, or liquidtight flex;
+- the **trade size**, ½″ to 4″;
+- the **conductors**: how many, and what size (#14 up to 750 kcmil). **Ground** reads *in the count* unless you pick a size to add a separate ground. **0 conductors** is an empty raceway;
+- what it **mounts to**: concrete, steel, wood, t-rod, or strut.
+
+The preview names the condition the way it will read everywhere—`3/4 EMT 3-#10 CONC`, `1 EMT 4-#10 +#12G STEEL`—and shows its buy list. **Add run** creates a linear condition and selects it; press `L` and trace. If the same configuration is already in the takeoff, **Select it** picks that one instead of making a twin. The dialog opens on your last pick.
+
+Nothing is pre-loaded: the combinations run to the hundreds, so a project holds only the ones you picked. Each run carries 5% waste (set per condition like any other) and two kinds of line, both derived from the configuration itself:
+
+- **conduit**: whole 10 ft lengths (rounded up) for EMT, rigid, IMC, and PVC; by the foot for flex;
+- **wire**: each size at its conductor count per LF—a 100 LF run of *3/4 EMT 4-#10* reads 100 LF of conduit, 10 lengths, and 400 LF of #10.
+
+**Mounting only names the assembly.** The supports and labor for concrete, steel, wood, t-rod, or strut come from your estimating system's item, so no support quantities are guessed here. For MC cable or anything the builder doesn't cover, use **+ condition**.
 
 ### One finish, two areas — condition twins
 

@@ -108,6 +108,8 @@ import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
 import ImportPanelPanel from "../components/ImportPanelPanel.jsx";
+import RacewayBuilder from "../components/RacewayBuilder.jsx";
+import { racewayName, racewayTemplate, racewayColorIndex } from "../lib/raceway";
 // Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
 // docked diagram/reorder desk. Cut edits commit through the rollcut command.
@@ -729,6 +731,7 @@ export default function TakeoffCanvas() {
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
   const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" / "panelsched" tools — ISOLATED from poly so it can never leak into a measure shape
+  const [racewayOpen, setRacewayOpen] = useState(false);          // "+ raceway" builder dialog
   const [panelDraft, setPanelDraft] = useState(null);         // Import-panel-schedule approval draft { panel, sheet_id, region, source } (null = dialog closed)
   const [panelSchedules, setPanelSchedules] = useState([]);   // imported panel schedules — additive `panel_schedules` payload key (lib/panelSchedules.js)
   const panelBusyRef = useRef(false);                         // a panel read (text or OCR) in flight — a second marquee waits
@@ -7563,6 +7566,18 @@ export default function TakeoffCanvas() {
     persistTemplates(at >= 0 ? templates.map((t, i) => (i === at ? tpl : t)) : [...templates, tpl]);
     setCommitMsg(`Saved ${tpl.finish_tag} to the library.`);
   };
+  // "+ raceway": the picked configuration becomes a ready LINEAR condition
+  // (lib/raceway.ts). Already in this takeoff → just select it, never a twin.
+  const createRaceway = (spec) => {
+    const name = racewayName(spec);
+    const have = conditions.find((c) => normalizeTag(c.finish_tag) === normalizeTag(name));
+    setRacewayOpen(false);
+    if (have) { activateCondition(have.id, { reassign: false }); setCommitMsg(`${name} is already in this takeoff — selected it.`); return; }
+    const c = instantiateTemplate(racewayTemplate(spec, PALETTE[racewayColorIndex(name, PALETTE.length)]));
+    setConditions((cs) => [...cs, c]);
+    activateCondition(c.id, { reassign: false });
+    setCommitMsg(`Added ${c.finish_tag} — trace it with the linear tool.`);
+  };
   const applyTemplate = (t) => {
     const c = instantiateTemplate(t);
     setConditions((cs) => [...cs, c]);
@@ -7666,7 +7681,7 @@ export default function TakeoffCanvas() {
   const panelHandlersRef = useRef(null);
   panelHandlersRef.current = {
     onActivate: activateCondition, onLocate: locateCondition,
-    onAddCondition: addCondition, onDeleteCondition: deleteCondition,
+    onAddCondition: addCondition, onAddRaceway: () => setRacewayOpen(true), onDeleteCondition: deleteCondition,
     onUpdateCond: updateCond, onSetCondParam: setCondParam, onAssignAttr: assignAttr,
     onAddMaterial: addMaterial, onUpdateMaterial: updateMaterial, onRemoveMaterial: removeMaterial,
     onDuplicateCondition: duplicateCondition, onSplitCondition: splitCondition,
@@ -8199,6 +8214,8 @@ export default function TakeoffCanvas() {
             {/* add a condition without opening the (now-collapsed) sidebar */}
             <button type="button" onClick={addCondition} title="Add a new condition"
               style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>+ condition</button>
+            <button type="button" onClick={() => setRacewayOpen(true)} title="Add a raceway run — pick type, size, conductors and mounting"
+              style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>+ raceway</button>
           </div>
           {/* the active condition's appearance editor, restored to the top bar —
               same component the docked panel row renders (one source of truth) */}
@@ -8269,6 +8286,7 @@ export default function TakeoffCanvas() {
             );
           })}
           <button onClick={addCondition} style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
+          <button onClick={() => setRacewayOpen(true)} title="Add a raceway run — pick type, size, conductors and mounting" style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ raceway</button>
         </div>
       )}
 
@@ -10019,6 +10037,15 @@ export default function TakeoffCanvas() {
           listFolder={cloudMode ? pickerListFolder : undefined}
           addSheets={pickerAddSheets}
           onAdded={async () => { await refreshSheets(); setStatus("ready"); }}
+        />
+      )}
+
+      {racewayOpen && (
+        <RacewayBuilder
+          existingTags={new Set(conditions.map((c) => normalizeTag(c.finish_tag)))}
+          normalize={normalizeTag}
+          onCreate={createRaceway}
+          onClose={() => setRacewayOpen(false)}
         />
       )}
 
