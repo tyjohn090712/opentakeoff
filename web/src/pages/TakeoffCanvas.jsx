@@ -150,7 +150,9 @@ import {
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
   MARKUP_IMG_MAX, MAX_IMAGE_MARKUP_BYTES, MARKUP_UPLOAD_MAX_BYTES, MARKUP_DECODE_MAX_AREA,
 } from "../lib/canvasConstants.js";
-import { uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
+import { uid, clamp, isDangerMsg, instantiateTemplate, seedWorkspace } from "../lib/canvasUtil.js";
+import { templateFromCondition, templateCategory, seedsNewProjects, measureTool, inferMeasure, resolveTemplateAttrs } from "../lib/chest.js";
+import { missingStarters, starterCategory } from "../lib/deviceCatalog.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
 // pool in lib/tilePool.ts, DOM/Worker orchestration glue here via one
 // long-lived compositor instance. Replaces the old single-raster base +
@@ -1552,7 +1554,12 @@ export default function TakeoffCanvas() {
     setActiveLabel(null);   // active label is session-only — never carry one from the replaced project into a fresh/loaded one
     const conds = sanitizeConditionAttrs(a.conditions || []);   // strips corrupt attrs values so every reader can trust them (the client_info precedent)
     if (conds.length) { setConditions(conds); setActiveCond(conds[0].id); }
-    else { const seeded = seedConditions(templatesRef.current); setConditions(seeded); setActiveCond(seeded[0].id); }   // library templates first, flooring defaults as fallback
+    else {
+      // starred chest items first, the built-in electrical defaults as fallback; their labels map onto the
+      // project's columns by name, and a project with no columns at all gets a blank "Est. code" one
+      const seeded = seedWorkspace(templatesRef.current, sanitizeConditionColumns(a.condition_columns));
+      setConditions(seeded.conditions); setConditionColumns(seeded.columns); setActiveCond(seeded.conditions[0].id);
+    }
     // palette holds condition ids — de-dupe (a hand-edited/older payload could
     // repeat one, which would collide React keys and double-map a hotkey), drop
     // any that don't resolve in the loaded set, and cap defensively; a seeded
@@ -7548,47 +7555,94 @@ export default function TakeoffCanvas() {
     templatesRef.current = next; setTemplates(next);
     store.saveTemplates(next).catch((e) => setCommitMsg(`Couldn't save the library: ${e.message || e}`));
   };
-  const condToTemplate = (c) => ({
-    finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch || "solid",
-    waste_pct: c.waste_pct || 0,
-    ...(c.height_ft != null ? { height_ft: c.height_ft } : {}),
-    ...(c.thickness_in != null ? { thickness_in: c.thickness_in } : {}),
-    ...(c.laborType != null ? { laborType: c.laborType } : {}),
-    ...(c.subfloorType != null ? { subfloorType: c.subfloorType } : {}),
-    ...(c.roll_setup ? { roll_setup: { ...c.roll_setup } } : {}),   // #136 — the roll spec is part of what makes a CPT-1 template CPT-1
-    materials: (c.materials || []).map(({ id: _id, ...m }) => (m.grout ? { ...m, grout: { ...m.grout } } : m)),   // ids are minted on instantiation; grout never shared by reference
-  });
+  // ── tool chest (lib/chest.js) ─────────────────────────────────────────────
+  // The Library, organized: grouped, searchable, each item carrying its labels
+  // and the tool it arms. A chest item never starts a new project unless starred.
   const saveActiveAsTemplate = () => {
     if (!aCond) return;
-    const tpl = condToTemplate(aCond);
-    const at = templates.findIndex((t) => t.finish_tag === tpl.finish_tag);
-    if (at >= 0 && !window.confirm(`A “${tpl.finish_tag}” template is already in the library — replace it?`)) return;
+    const at = templates.findIndex((t) => t.finish_tag === aCond.finish_tag);
+    if (at >= 0 && !window.confirm(`A “${aCond.finish_tag}” item is already in the chest — replace it?`)) return;
+    const prev = at >= 0 ? templates[at] : null;
+    let category = prev ? templateCategory(prev) : "";
+    if (!prev) {
+      const asked = window.prompt(`Chest group for ${aCond.finish_tag} (e.g. Receptacles, Fire alarm):`, starterCategory(aCond.finish_tag) || "Other");
+      if (asked === null) return;
+      category = asked.trim() || "Other";
+    }
+    const tpl = {
+      ...templateFromCondition(aCond, conditionColumns, { category, seed: prev ? prev.seed : false, measure: inferMeasure(shapes, aCond.id) || prev?.measure }),
+      ...(prev?.desc ? { desc: prev.desc } : {}),
+    };
     persistTemplates(at >= 0 ? templates.map((t, i) => (i === at ? tpl : t)) : [...templates, tpl]);
-    setCommitMsg(`Saved ${tpl.finish_tag} to the library.`);
+    setCommitMsg(`Saved ${tpl.finish_tag} to the chest${prev ? "" : ` under ${category}`}.`);
   };
   // "+ raceway": the picked configuration becomes a ready LINEAR condition
-  // (lib/raceway.ts). Already in this takeoff → just select it, never a twin.
-  const createRaceway = (spec) => {
+  // (lib/raceway.ts) and arms the Linear tool. Already in this takeoff → just
+  // select it, never a twin. `keep` files it in the chest too (never seeding).
+  const createRaceway = (spec, { keep = false } = {}) => {
     const name = racewayName(spec);
-    const have = conditions.find((c) => normalizeTag(c.finish_tag) === normalizeTag(name));
+    const tag = normalizeTag(name);
+    const tpl = racewayTemplate(spec, PALETTE[racewayColorIndex(name, PALETTE.length)]);
     setRacewayOpen(false);
-    if (have) { activateCondition(have.id, { reassign: false }); setCommitMsg(`${name} is already in this takeoff — selected it.`); return; }
-    const c = instantiateTemplate(racewayTemplate(spec, PALETTE[racewayColorIndex(name, PALETTE.length)]));
+    if (keep && !templates.some((t) => normalizeTag(t.finish_tag) === tag)) persistTemplates([...templates, tpl]);
+    const have = conditions.find((c) => normalizeTag(c.finish_tag) === tag);
+    if (have) { activateCondition(have.id, { reassign: false }); setTool("linear"); setCommitMsg(`${name} is already in this takeoff — selected it. Linear tool armed.`); return; }
+    const c = instantiateTemplate(tpl);
     setConditions((cs) => [...cs, c]);
     activateCondition(c.id, { reassign: false });
-    setCommitMsg(`Added ${c.finish_tag} — trace it with the linear tool.`);
+    setTool("linear");
+    setCommitMsg(`Added ${c.finish_tag} — Linear tool armed, click to trace.`);
   };
+  // Apply = use it: already in this takeoff → select it (never a twin); else add
+  // it with its labels mapped onto the project's columns by name. Either way the
+  // tool its measure names is armed.
   const applyTemplate = (t) => {
-    const c = instantiateTemplate(t);
+    const arm = measureTool(t);
+    const armed = arm ? ` ${{ count: "Count", linear: "Linear", area: "Area" }[arm]} tool armed.` : "";
+    const have = conditions.find((c) => normalizeTag(c.finish_tag) === normalizeTag(t.finish_tag));
+    if (have) {
+      activateCondition(have.id, { reassign: false });
+      if (arm) setTool(arm);
+      setCommitMsg(`${have.finish_tag} is already in this takeoff — selected it.${armed}`);
+      return;
+    }
+    const c0 = instantiateTemplate(t);
+    const r = resolveTemplateAttrs(conditionColumns, t.attrs_by_name, () => uid("col"));
+    if (r.columns !== conditionColumns) setConditionColumns(r.columns);
+    const c = Object.keys(r.attrs).length ? { ...c0, attrs: r.attrs } : c0;
     setConditions((cs) => [...cs, c]);
-    // reassign:false — Library Apply has no visual reassign affordance, but it
+    // reassign:false — Apply has no visual reassign affordance, but it
     // still dismisses a live bulk selection like every other activation surface
     activateCondition(c.id, { reassign: false });
+    if (arm) setTool(arm);
     // the panel switches itself back to the Takeoffs tab (its Apply handler)
-    setCommitMsg(`Added ${c.finish_tag} from the library.`);
+    setCommitMsg(`Added ${c.finish_tag} from the chest.${armed}`);
   };
-  // idx addresses the template BY POSITION (the panel's plain templates.map
-  // index — it doesn't filter/sort). The focus-refresh above now skips the
+  // ★ — does this item start new projects? (☆ keeps it in the chest only)
+  const toggleTemplateSeed = (idx) => {
+    const t = templates[idx];
+    if (!t) { setCommitMsg("The chest changed in another tab — try again."); return; }
+    persistTemplates(templates.map((x, i) => (i === idx ? { ...x, seed: !seedsNewProjects(t) } : x)));
+  };
+  const setTemplateCategory = (idx) => {
+    const t = templates[idx];
+    if (!t) { setCommitMsg("The chest changed in another tab — try again."); return; }
+    const asked = window.prompt(`Chest group for ${t.finish_tag}:`, templateCategory(t));
+    if (asked === null) return;
+    persistTemplates(templates.map((x, i) => {
+      if (i !== idx) return x;
+      const { category: _c, ...rest } = x;
+      return asked.trim() ? { ...rest, category: asked.trim() } : rest;
+    }));
+  };
+  const addStarterDevices = () => {
+    const add = missingStarters(templates.map((t) => t.finish_tag));
+    if (!add.length) { setCommitMsg("Every starter device is already in the chest."); return; }
+    persistTemplates([...templates, ...add]);
+    setCommitMsg(`Added ${add.length} starter device${add.length === 1 ? "" : "s"} to the chest.`);
+  };
+  // idx addresses the template BY POSITION (the chest panel groups, sorts and
+  // filters, but hands back each item's position in the full library). The focus-refresh above now skips the
   // setState when the loaded library is unchanged, which closes off the
   // common way idx would go stale mid-session; a same-length edit landing
   // from another tab in the sub-second window between render and click can
@@ -7690,6 +7744,7 @@ export default function TakeoffCanvas() {
     onFollowFamilyRow: followFamilyRow, onRestoreDroppedRow: restoreDroppedRow,
     onBulkWaste: bulkWasteConditions, onBulkColor: bulkColorConditions, onBulkDelete: bulkDeleteConditions,
     onSaveTemplate: saveActiveAsTemplate, onApplyTemplate: applyTemplate,
+    onToggleSeed: toggleTemplateSeed, onSetCategory: setTemplateCategory, onAddStarters: addStarterDevices,
     onRenameTemplate: renameTemplate, onDeleteTemplate: deleteTemplate,
     onAddColumn: addColumn, onRenameColumn: renameColumn, onDeleteColumn: deleteColumn,
     onAddColumnValue: addColumnValue, onRemoveColumnValue: removeColumnValue, onRenameColumnValue: renameColumnVal,
@@ -8221,7 +8276,7 @@ export default function TakeoffCanvas() {
               same component the docked panel row renders (one source of truth) */}
           {aCond && (
             <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
-              <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} />
+              <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} onAddColumnValue={addColumnValue} conditionColumns={conditionColumns} layout="row" units={units} />
             </div>
           )}
         </div>

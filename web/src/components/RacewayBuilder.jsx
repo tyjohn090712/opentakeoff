@@ -8,7 +8,9 @@
 //
 // Contract:
 //   <RacewayBuilder existingTags={Set<normalized tag>} normalize={fn}
-//                   onCreate(spec) onClose />
+//                   onCreate(spec, { keep }) onClose />
+// `keep` files the run in the tool chest too (group Raceway), so the next
+// project picks it from there instead of rebuilding it.
 import React, { useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import {
@@ -30,6 +32,7 @@ function lastPick() {
 
 export default function RacewayBuilder({ existingTags = new Set(), normalize = (s) => s, onCreate, onClose }) {
   const [spec, setSpec] = useState(lastPick);
+  const [keep, setKeep] = useState(true);
   const set = (patch) => setSpec((s) => ({ ...s, ...patch }));
   const isMc = spec.type === "MC";
   const mounts = mountingsFor(spec.type);
@@ -54,7 +57,7 @@ export default function RacewayBuilder({ existingTags = new Set(), normalize = (
   const create = () => {
     if (problem) return;
     try { localStorage.setItem(LAST_KEY, JSON.stringify(clean)); } catch { /* storage unavailable — the pick just isn't remembered */ }
-    onCreate(clean);
+    onCreate(clean, { keep });
   };
 
   const lbl = { fontFamily: "var(--f-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)" };
@@ -156,7 +159,12 @@ export default function RacewayBuilder({ existingTags = new Set(), normalize = (
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "10px 14px", borderTop: "1px solid var(--ink-faint)" }}>
-          {taken && <span style={{ ...lbl, marginRight: "auto", color: "var(--c-warning)" }}>already in this takeoff — selects it</span>}
+          <label style={{ display: "flex", alignItems: "center", gap: 6, marginRight: "auto", fontSize: 11.5 }}
+            title="File this run in the tool chest (group Raceway) so any project can pick it from there">
+            <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
+            Keep in the tool chest
+          </label>
+          {taken && <span style={{ ...lbl, color: "var(--c-warning)" }}>already in this takeoff — selects it</span>}
           <button onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Cancel</button>
           <button onClick={create} disabled={!!problem}
             style={{ padding: "8px 16px", border: "none", background: problem ? "var(--text-faint)" : "var(--ink)", color: "var(--paper-bright)", cursor: problem ? "default" : "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
