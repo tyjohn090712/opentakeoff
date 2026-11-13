@@ -254,6 +254,7 @@ Below that, list what actually goes on the order: adhesive, sealer, polyurethane
 
 - a **coverage rate**—*1 unit per N*—and a **basis**: floor SF, linear LF, each, or **seam LF**;
 - a **count**, the small number before the unit (1 unless you change it), for a line that comes several to each unit of basis: three conductors per LF of raceway is *3 lf per 1 LF*. It scales that one line. The condition's **×N** scales everything on the condition, the footage included;
+- a **% waste** for the line, added before rounding: 10 on wire and MC cable means 100 LF of #12 reads 110. It's separate from the condition's waste %, which shows in the Report's “w/ waste” columns and never in the buy list;
 - a **round up** flag (on by default—you buy whole buckets and bags);
 - a **preset picker** for adhesive and mortar lines: real trowel-notch and roller spread rates (PSA rollers at 300 SF/gal down to coarse wood notches at 40 SF/gal; mortar trowels from 90 to 30 SF per 50-lb bag). Generic industry-typical values—always verify against the product data sheet;
 - for **grout** lines, an inline **calculator**: enter tile L × W × thickness, joint width (1/32″–1/2″), and bag weight, and the SF/bag rate derives itself, writing its work into the note (`12×24×3/8″ @ 1/8″ · 25 lb`);
@@ -274,19 +275,20 @@ LF line reads **0**, which means *needs a layout* rather than a number you shoul
 
 A run is priced as one assembly—*3/4 EMT, 3 #10, on concrete*—so that's how you pick it. **+ raceway** (beside **+ condition**, in the top bar and in the Takeoffs panel) asks for:
 
-- the **raceway**: EMT, rigid steel, IMC, PVC Sch 40, flex, or liquidtight flex;
-- the **trade size**, ½″ to 4″;
-- the **conductors**: how many, and what size (#14 up to 750 kcmil). **Ground** reads *in the count* unless you pick a size to add a separate ground. **0 conductors** is an empty raceway;
-- what it **mounts to**: concrete, steel, wood, t-rod, or strut.
+- the **raceway**: EMT, rigid steel, IMC, PVC Sch 40, flex, liquidtight flex, or **MC cable**;
+- for conduit, the **trade size** (½″ to 4″) and the **conductors**: how many, and what size (#14 up to 750 kcmil). **Ground** reads *in the count* unless you pick a size to add a separate ground. **0 conductors** is an empty raceway;
+- for MC cable, the **cable size** (#14 to #1) and its **conductors** (2 to 5): `12/2` is two plus the ground. Larger MC is feeder work—use **+ condition**;
+- what it **mounts to**: concrete, steel, wood, t-rod, or strut. MC cable adds **drop wire**.
 
-The preview names the condition the way it will read everywhere—`3/4 EMT 3-#10 CONC`, `1 EMT 4-#10 +#12G STEEL`—and shows its buy list. **Add run** creates a linear condition and selects it; press `L` and trace. If the same configuration is already in the takeoff, **Select it** picks that one instead of making a twin. The dialog opens on your last pick.
+The preview names the condition the way it will read everywhere—`3/4 EMT 3-#10 CONC`, `1 EMT 4-#10 +#12G STEEL`, `12/2 MC DROP-WIRE`—and shows its buy list. **Add run** creates a linear condition and selects it; press `L` and trace. If the same configuration is already in the takeoff, **Select it** picks that one instead of making a twin. The dialog opens on your last pick.
 
-Nothing is pre-loaded: the combinations run to the hundreds, so a project holds only the ones you picked. Each run carries 5% waste (set per condition like any other) and two kinds of line, both derived from the configuration itself:
+Nothing is pre-loaded: the combinations run to the hundreds, so a project holds only the ones you picked. Each run is a linear condition with lines derived from the configuration itself:
 
-- **conduit**: whole 10 ft lengths (rounded up) for EMT, rigid, IMC, and PVC; by the foot for flex;
-- **wire**: each size at its conductor count per LF—a 100 LF run of *3/4 EMT 4-#10* reads 100 LF of conduit, 10 lengths, and 400 LF of #10.
+- **conduit**: whole 10 ft lengths (rounded up) for EMT, rigid, IMC, and PVC; by the foot for flex. The condition carries 5% waste, set per condition like any other;
+- **wire**: each size at its conductor count per LF, **plus 10% waste**—a 100 LF run of *3/4 EMT 4-#10* reads 100 LF of conduit, 10 lengths, and 440 LF of #10;
+- **MC cable**: the cable itself, **plus 10% waste** on the line and on the condition—100 LF of *12/3 MC* reads 110.
 
-**Mounting only names the assembly.** The supports and labor for concrete, steel, wood, t-rod, or strut come from your estimating system's item, so no support quantities are guessed here. For MC cable or anything the builder doesn't cover, use **+ condition**.
+**Mounting only names the assembly.** The supports and labor for concrete, steel, wood, t-rod, strut, or drop wire come from your estimating system's item, so no support quantities are guessed here. For anything the builder doesn't cover, use **+ condition**.
 
 ### One finish, two areas — condition twins
 

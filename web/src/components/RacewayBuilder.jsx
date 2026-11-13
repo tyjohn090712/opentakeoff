@@ -1,9 +1,10 @@
 // RacewayBuilder — the "+ raceway" dialog. Pick what the run IS the way the
 // estimating system names it — raceway type, trade size, conductors, what it
 // mounts to — and get a ready LINEAR condition ("3/4 EMT 3-#10 CONC") to trace
-// with. Hundreds of combinations exist, so nothing is pre-seeded: a project
-// holds only the ones picked. The pure half (names, lines, validation) is
-// lib/raceway.ts.
+// with. MC cable is picked the same way (cable size, conductors, mounting —
+// its supports are conduit's plus a drop wire). Hundreds of combinations
+// exist, so nothing is pre-seeded: a project holds only the ones picked. The
+// pure half (names, lines, validation) is lib/raceway.ts.
 //
 // Contract:
 //   <RacewayBuilder existingTags={Set<normalized tag>} normalize={fn}
@@ -11,8 +12,8 @@
 import React, { useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import {
-  RACEWAY_TYPES, TRADE_SIZES, WIRE_SIZES, MOUNTINGS, MAX_CONDUCTORS,
-  racewayName, racewayLabel, racewayProblem, racewayTemplate,
+  RUN_TYPES, TRADE_SIZES, WIRE_SIZES, MC_WIRES, MC_COUNTS, MAX_CONDUCTORS,
+  mountingsFor, racewayName, racewayLabel, racewayProblem, racewayTemplate,
 } from "../lib/raceway";
 
 const LAST_KEY = "opentakeoff_raceway_last";
@@ -30,8 +31,21 @@ function lastPick() {
 export default function RacewayBuilder({ existingTags = new Set(), normalize = (s) => s, onCreate, onClose }) {
   const [spec, setSpec] = useState(lastPick);
   const set = (patch) => setSpec((s) => ({ ...s, ...patch }));
+  const isMc = spec.type === "MC";
+  const mounts = mountingsFor(spec.type);
+  // switching to or from MC keeps what still makes sense and resets what doesn't
+  const changeType = (type) => setSpec((s) => {
+    const next = { ...s, type };
+    if (type === "MC") {
+      if (!MC_WIRES.includes(s.wire)) next.wire = "12";
+      if (!MC_COUNTS.includes(s.count)) next.count = 2;
+      next.ground = "";
+    }
+    if (!mountingsFor(type).some((m) => m.id === s.mount)) next.mount = "CONC";
+    return next;
+  });
 
-  const clean = useMemo(() => ({ ...spec, ground: spec.ground || null }), [spec]);
+  const clean = useMemo(() => ({ ...spec, ground: isMc ? null : spec.ground || null }), [spec, isMc]);
   const problem = racewayProblem(clean);
   const name = problem ? "" : racewayName(clean);
   const taken = !!name && existingTags.has(normalize(name));
@@ -62,18 +76,29 @@ export default function RacewayBuilder({ existingTags = new Set(), normalize = (
         <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12, overflow: "auto" }}>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             {field("Raceway", (
-              <select name="raceway-type" value={spec.type} onChange={(e) => set({ type: e.target.value })} style={sel}>
-                {RACEWAY_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+              <select name="raceway-type" value={spec.type} onChange={(e) => changeType(e.target.value)} style={sel}>
+                {RUN_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             ))}
-            {field("Trade size", (
+            {!isMc && field("Trade size", (
               <select name="raceway-size" value={spec.size} onChange={(e) => set({ size: e.target.value })} style={{ ...sel, ...mono }}>
                 {TRADE_SIZES.map((s) => <option key={s} value={s}>{s}″</option>)}
               </select>
             ))}
+            {isMc && field("Cable size", (
+              <select name="mc-wire" value={spec.wire} onChange={(e) => set({ wire: e.target.value })} style={{ ...sel, ...mono }}>
+                {MC_WIRES.map((w) => <option key={w} value={w}>#{w}</option>)}
+              </select>
+            ))}
+            {isMc && field("Conductors", (
+              <select name="mc-count" value={spec.count} onChange={(e) => set({ count: Number(e.target.value) })} style={{ ...sel, ...mono }}
+                title="Current-carrying conductors in the cable — 12/2 is two plus the ground">
+                {MC_COUNTS.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            ))}
           </div>
 
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+          {!isMc && <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
             {field("Conductors", (
               <input name="raceway-count" type="number" min={0} max={MAX_CONDUCTORS} step={1} value={spec.count}
                 onChange={(e) => set({ count: e.target.value === "" ? "" : Math.floor(Number(e.target.value)) })}
@@ -92,12 +117,12 @@ export default function RacewayBuilder({ existingTags = new Set(), normalize = (
               </select>
             ))}
             <span style={{ ...lbl, paddingBottom: 6 }}>0 conductors = an empty raceway</span>
-          </div>
+          </div>}
 
           <div>
             <div style={{ ...lbl, marginBottom: 4 }}>Mounts to</div>
             <div role="radiogroup" aria-label="Mounts to" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {MOUNTINGS.map((m) => {
+              {mounts.map((m) => {
                 const on = spec.mount === m.id;
                 return (
                   <button key={m.id} role="radio" aria-checked={on} onClick={() => set({ mount: m.id })}
@@ -119,11 +144,11 @@ export default function RacewayBuilder({ existingTags = new Set(), normalize = (
                 <div style={{ ...lbl, marginTop: 8 }}>Buy list from the footage you trace</div>
                 <ul style={{ margin: "4px 0 0", paddingLeft: 18, ...mono, fontSize: 11.5, lineHeight: 1.6 }}>
                   {lines.map((m) => (
-                    <li key={m.name}>{m.name} — {m.mult && m.mult !== 1 ? `${m.mult} ${m.unit} per LF` : m.unit === "ea" ? `1 per ${m.per} LF` : `1 ${m.unit} per LF`}</li>
+                    <li key={m.name}>{m.name} — {m.mult && m.mult !== 1 ? `${m.mult} ${m.unit} per LF` : m.unit === "ea" ? `1 per ${m.per} LF` : `1 ${m.unit} per LF`}{m.waste_pct ? `, +${m.waste_pct}% waste` : ""}</li>
                   ))}
                 </ul>
                 <div style={{ color: "var(--ink-muted)", fontSize: 11, marginTop: 6 }}>
-                  Supports and labor for {MOUNTINGS.find((m) => m.id === spec.mount)?.label.toLowerCase()} come from your estimating system's assembly — they aren't guessed here.
+                  Supports and labor for {mounts.find((m) => m.id === spec.mount)?.label.toLowerCase()} come from your estimating system's assembly — they aren't guessed here.
                 </div>
               </>
             )}

@@ -251,6 +251,11 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
               <option value="seam_lf" title="Figured seam length from the roll layout — 0 until this condition carries a roll setup">seam LF</option>
             </select>
             {ov("basis") && rv(m, "basis")}
+            <input name="material-waste" type="number" min="0" step="any" value={m.waste_pct || ""} placeholder="0"
+              onChange={(e) => onUpdate(m.id, { waste_pct: Math.max(0, parseFloat(e.target.value) || 0) })}
+              title="This line's own waste allowance, added before rounding — 10 for wire and MC cable. Separate from the condition's waste %, which only reads in the Report's “w/ waste” columns."
+              style={{ ...ip, width: 40 }} />
+            <span style={{ color: "var(--ink-muted)" }}>% waste</span>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: ov("round") ? "var(--c-warning)" : "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
               <input name="material-round" type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
             </label>
