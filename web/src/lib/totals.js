@@ -84,10 +84,18 @@ export function conditionTotals(conditions, shapes, ctx = null) {
     // seam tape). Coverage comes off the product data sheet.
     const materials = (c.materials || []).filter((m) => m && m.name).map((m) => {
       const per = Math.max(0, Number(m.per) || 0);
-      const basisVal = m.basis === "linear" ? lf : m.basis === "count" ? ea : m.basis === "seam_lf" ? seam : total;
+      // `mult` = how many of this line per basis unit — 3 conductors per LF of
+      // raceway. It scales THIS line only (the condition's ×N would scale the
+      // raceway footage too). Absent or ≤ 0 means 1: the plain "basis ÷ per".
+      const lineMult = Number(m.mult) > 0 ? Number(m.mult) : 1;
+      // `waste_pct` on a LINE is that line's own allowance (10% on wire and MC
+      // cable), added before rounding. The condition's waste % is a separate
+      // thing: it reads in the Report's "w/ waste" columns, never in this list.
+      const lineWaste = Math.max(0, Number(m.waste_pct) || 0);
+      const basisVal = (m.basis === "linear" ? lf : m.basis === "count" ? ea : m.basis === "seam_lf" ? seam : total) * lineMult * (1 + lineWaste / 100);
       let qty = per > 0 ? basisVal / per : 0;
       qty = m.round === false ? round2(qty) : Math.ceil(qty - 1e-9);
-      return { name: m.name, unit: m.unit || "", per, basis: m.basis || "area", round: m.round !== false, note: m.note || "", basis_qty: round2(basisVal), qty };
+      return { name: m.name, unit: m.unit || "", per, basis: m.basis || "area", round: m.round !== false, note: m.note || "", basis_qty: round2(basisVal), qty, ...(lineMult !== 1 ? { mult: lineMult } : {}), ...(lineWaste ? { waste_pct: lineWaste } : {}) };
     });
     return {
       id: c.id, finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch,
@@ -344,6 +352,12 @@ export function verticalWallSf(shapes, conditionId, heightFt, multiplier = 1) {
 
 // Combined buy list: same-named materials summed across all conditions (each
 // condition is rounded first, then summed — you order per condition).
+/** The "Coverage" cell of an exported buy list: "1 gal / 300 SF", "3 lf / 1 LF +10% waste". */
+export function coverageText(m) {
+  const basis = m.basis === "linear" ? "LF" : m.basis === "count" ? "EA" : m.basis === "seam_lf" ? "seam LF" : "SF";
+  return `${m.mult || 1} ${m.unit || "unit"} / ${m.per} ${basis}${m.waste_pct ? ` +${m.waste_pct}% waste` : ""}`;
+}
+
 export function materialsSummary(rows) {
   const map = new Map();
   for (const r of rows) for (const m of (r.materials || [])) {
@@ -420,9 +434,8 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // supporting materials — per condition, then a combined buy list. Coverage
   // rates deliberately stay as entered (SF/LF-based) in metric mode — the
   // upstream metric contract; the report panel carries the footnote.
-  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
   const perCond = [];
-  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, coverageText(m), m.note || ""]);
   if (perCond.length) {
     lines.push("");
     lines.push(["Finish", "Material", "Qty", "Unit", "Coverage", "Note"].map(esc).join(","));

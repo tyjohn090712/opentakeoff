@@ -333,6 +333,9 @@ conditions behind a verify dialog—you approve what becomes a condition, and th
 rides along as read-only report columns. **Import panel schedule** reads a panelboard's
 schedule—vector text, or on-device OCR for a scanned or flattened sheet—into breaker counts by
 size and pole count, with spares and spaces kept apart and anything unreadable held for review.
+**+ raceway** builds a run the way an estimating system names it—*3/4 EMT, 3 #10, on concrete*;
+*12/2 MC, on drop wire*—from a raceway type, size, conductors, and mounting, with the conduit,
+wire, and cable lines (wire and MC at 10% waste) worked out from the footage you trace.
 
 **Supporting Materials** is the layer most takeoff tools punt on: per condition, a labor type
 and a subfloor type, plus the consumables that actually go on the order—adhesive, sealer,

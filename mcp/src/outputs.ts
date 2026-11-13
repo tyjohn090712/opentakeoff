@@ -586,7 +586,7 @@ const reportMaterialLine = z.object({
   per: z.number().describe("Coverage rate — basis units per purchase unit"),
   basis: z.enum(["area", "linear", "count", "seam_lf"]),
   round: z.boolean(),
-  basis_qty: z.number().describe("The condition total this row divides (SF, LF, EA, or figured seam LF — multiplier applied, waste not)"),
+  basis_qty: z.number().describe("The condition total this row divides (SF, LF, EA, or figured seam LF — multiplier applied, waste not; times the line's own `mult` and `(1 + waste_pct/100)` when it has them, e.g. 3 conductors per LF at 10% waste)"),
   qty: z.number().describe("Computed order quantity"),
 }).passthrough();
 

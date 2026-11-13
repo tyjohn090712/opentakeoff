@@ -96,16 +96,14 @@ export const HL_SIZES = [["F", 8], ["M", 14], ["B", 22]];   // screen px at draw
 //   - COUNT conditions (place_count / symbol_sweep shapes): devices, fixtures,
 //     panels. materials use basis "count" — qty = device count ÷ per, rounded
 //     up (e.g. 1 box per device).
-//   - LINEAR conditions (measure_line shapes): raceway/branch-circuit runs.
-//     materials use basis "linear" — qty = raceway LF ÷ per, rounded up.
-//     Conductor footage is NOT a materials line — it's the condition's own
-//     ×N multiplier (README: "waste %, an ×N multiplier"). instantiateTemplate
-//     always seeds multiplier: 1; set it per instance to the circuit's
-//     conductor count (e.g. 3 for a 20A/1P home run: hot + neutral + ground)
-//     and the report's LF, LF-net, and every linear-basis material line all
-//     scale with it automatically (totals.js conditionTotals: lf *= mult
-//     happens before basisVal is read) — no separate wire-footage tool needed
-//     for the Wave-3.1 (raceway-as-linear-condition) pass.
+//   - LINEAR conditions (measure_line shapes): strip lighting here, and every
+//     raceway run — which is NOT seeded. A run is priced as one assembly
+//     ("3/4 EMT 3-#10 CONC"), and the type × size × conductors × mounting
+//     combinations run to the hundreds, so the "+ raceway" builder
+//     (components/RacewayBuilder.jsx, lib/raceway.ts) makes the one you pick.
+//     Its wire lines carry the conductor count in the LINE's own `mult`
+//     (3 per LF). Do not use the condition's ×N multiplier for that: it scales
+//     the raceway footage too (×7 on 100 LF reported 700 LF of conduit).
 //
 // Expressed in TEMPLATE shape (finish_tag/waste_pct/materials, no fill — it
 // defaults from color) so seeding and the Library run the same constructor.
@@ -126,8 +124,4 @@ export const ELECTRICAL_DEFAULTS = [
     { name: "Whips/connectors", per: 8, basis: "linear", unit: "ea", note: "placeholder ~1 per 8 LF run — verify against the fixture's own connection spec" },
   ] },
   { finish_tag: "PNL",       color: "#1f2937", hatch: "solid",     waste_pct: 0, materials: [] },                                                                                                                                       // Panelboard / equipment placement — a COUNT condition
-  { finish_tag: "EMT-BRANCH", color: "#c96442", hatch: "circuit",  waste_pct: 5, materials: [                                            // Branch-circuit raceway (EMT) — a LINEAR condition; set the condition's ×N multiplier to the run's conductor count
-    { name: "THHN conductor",       kind: "conductor", per: 1,  basis: "linear", unit: "lf", note: "qty scales with the condition's ×N multiplier — see comment above" },
-    { name: "EMT couplings/straps", per: 10, basis: "linear", unit: "ea", note: "placeholder rate — verify against your take-off standard" },
-  ] },
 ];

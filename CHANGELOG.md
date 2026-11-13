@@ -2,6 +2,15 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-11-12 — raceway runs are picked the way they're priced (electrical fork, Wave 3)
+
+### Added
+- **+ raceway.** Pick a raceway type (EMT, rigid, IMC, PVC, flex, liquidtight, or MC cable), trade size, conductors (count and wire size, optional separate ground, or none for an empty raceway), and what it mounts to (concrete, steel, wood, t-rod, strut — MC cable also takes drop wire), and get a linear condition named like an estimating-system item: `3/4 EMT 3-#10 CONC`, `12/2 MC DROP-WIRE`. It carries the conduit (whole 10 ft lengths, or by the foot for flex) and each wire at its conductor count per LF, or the MC cable itself. **All wire and MC cable carries 10% waste** (on its own line; an MC condition's waste is 10% too, conduit's 5%). Nothing is pre-loaded, since the combinations run to the hundreds; the same configuration picked twice selects the existing condition. The buttons sit beside **+ condition** in the top bar and the Takeoffs panel. Pure builder and naming in `web/src/lib/raceway.ts`; dialog in `components/RacewayBuilder.jsx`.
+- **A material line can carry its own count and its own waste.** The number before the unit on a supporting-material line (it was a fixed "1") is now editable: *3 lf per 1 LF* is three conductors per LF of raceway. A new **% waste** on the line adds an allowance before rounding (10 on wire: 100 LF reads 110). Both scale that line only, are saved with the project and in plays, and export in the Coverage text (`3 lf / 1 LF +10% waste`). The condition's own waste % is unchanged and still never reaches the buy list. Lines without either are unchanged.
+
+### Changed
+- **The `EMT-BRANCH` starter condition is gone.** It told you to set the condition's ×N to the conductor count, but ×N scales the raceway footage as well: a ×7 on 100 LF reported 700 LF of conduit and 70 couplings. Wire counts now live on the wire line, and the condition's ×N stays at 1. A project that already used `EMT-BRANCH` with a multiplier should set it back to 1 and add the conductor count to the wire line.
+
 ## 2026-10-25 — panel schedules with no POLES column
 
 ### Fixed
