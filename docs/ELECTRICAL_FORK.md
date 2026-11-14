@@ -1,5 +1,7 @@
 # This fork: electrical-only
 
+> New session? Start with [`FORK_HANDBOOK.md`](FORK_HANDBOOK.md) (who this is for, decisions, workflow, traps). This file is the plan of record: what's built, what the real sheets taught, and what's next.
+
 `tyjohn090712/opentakeoff`, forked from `Kentucky-ai/opentakeoff` `main` (2026-08-30). Upstream is a flooring takeoff engine; this fork commits to electrical only rather than staying generic/multi-trade. This doc is the plan — update it as waves land.
 
 ## The one thing that makes this tractable
