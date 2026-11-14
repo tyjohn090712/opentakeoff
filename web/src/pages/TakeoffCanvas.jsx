@@ -151,7 +151,10 @@ import {
   MARKUP_IMG_MAX, MAX_IMAGE_MARKUP_BYTES, MARKUP_UPLOAD_MAX_BYTES, MARKUP_DECODE_MAX_AREA,
 } from "../lib/canvasConstants.js";
 import { uid, clamp, isDangerMsg, instantiateTemplate, seedWorkspace } from "../lib/canvasUtil.js";
-import { templateFromCondition, templateCategory, seedsNewProjects, measureTool, inferMeasure, resolveTemplateAttrs } from "../lib/chest.js";
+import { templateFromCondition, templateCategory, seedsNewProjects, measureTool, inferMeasure, resolveTemplateAttrs, conditionMeasure, TOOL_MEASURE } from "../lib/chest.js";
+import { draftRunTally, dedupeDraft, splitDraftRun, buildRun, strandedMarks, runMarkPositions, adderTag, conditionAdderFt, runCountedPoints, runAdderLf } from "../lib/runPoints.js";
+import QuickPick from "../components/QuickPick.jsx";
+import RunMarks from "../components/RunMarks.jsx";
 import { missingStarters, starterCategory } from "../lib/deviceCatalog.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
 // pool in lib/tilePool.ts, DOM/Worker orchestration glue here via one
@@ -478,12 +481,48 @@ export default function TakeoffCanvas() {
   // ON a radius wall instead of near it. ⌥ still works, and it INVERTS whatever
   // the mode is. The mode is trace-local; it clears with the trace.
   const [curveMode, setCurveMode] = useState(false);
-  const clearPoly = () => { setPoly([]); setPolyCurve([]); setCurveMode(false); };
-  const dropLastPoint = () => { setPoly((q) => q.slice(0, -1)); setPolyCurve((q) => q.slice(0, -1)); };
-  const addPoint = (pt, curved) => { setPoly((q) => [...q, pt]); setPolyCurve((q) => [...q, !!curved]); };
+  // Linear-run point meta (electrical fork, lib/runPoints.js) — parallel to
+  // poly like polyCurve: { u } uncounted (Shift-click), { gap } the segment
+  // into this point is a jump (G), { add: [ft] } adders dropped here (Space).
+  // gapNext is a G pressed and waiting for the next click; a ref too, because
+  // moveCrosshair reads it between renders.
+  const [polyMeta, setPolyMeta] = useState([]);
+  const polyMetaRef = useRef(polyMeta);
+  polyMetaRef.current = polyMeta;   // key handlers subscribe on poly, not on meta — read it fresh
+  const [gapNext, setGapNextState] = useState(false);
+  const gapNextRef = useRef(false);
+  const setGapNext = (v) => { gapNextRef.current = v; setGapNextState(v); };
+  const clearPoly = () => { setPoly([]); setPolyCurve([]); setPolyMeta([]); setGapNext(false); setCurveMode(false); };
+  // ⌫ / ⌘Z mid-trace takes back the LAST thing done: a pending G, then the
+  // newest adder on the last point, then the point itself
+  const dropLastPoint = () => {
+    if (gapNextRef.current) { setGapNext(false); return; }
+    const last = polyMetaRef.current[polyMetaRef.current.length - 1];
+    if (last?.add?.length) { setPolyMeta((q) => q.map((m, i) => (i === q.length - 1 ? { ...m, add: m.add.slice(0, -1) } : m))); return; }
+    setPoly((q) => q.slice(0, -1)); setPolyCurve((q) => q.slice(0, -1)); setPolyMeta((q) => q.slice(0, -1));
+  };
+  const addPoint = (pt, curved, meta = {}) => { setPoly((q) => [...q, pt]); setPolyCurve((q) => [...q, !!curved]); setPolyMeta((q) => [...q, meta]); };
+  // Space mid-run: one adder at the last point, at the active item's adder length
+  const addAdder = (ft) => setPolyMeta((q) => q.map((m, i) => (i === q.length - 1 ? { ...m, add: [...(m.add || []), ft] } : m)));
   // the drawn boundary of the in-progress trace: straight where it was clicked
   // straight, splined through every run of curve points
   const curveIdx = useMemo(() => polyCurve.reduce((a, c, i) => (c ? (a.push(i), a) : a), []), [polyCurve]);
+  // a linear draft as drawn: one polyline per segment between G jumps, and
+  // where its counted / uncounted points and adders sit (RunMarks)
+  const draftRun = useMemo(() => {
+    if (tool !== "linear" || !poly.length) return null;
+    const lines = splitDraftRun(poly, polyCurve, polyMeta).map((pc) => {
+      const ci = pc.curve.reduce((a, c, i) => (c ? (a.push(i), a) : a), []);
+      return ci.length ? flattenArcRing(pc.pts, ci, false) : pc.pts;
+    }).filter((l) => l.length >= 2);
+    const counted = [], uncounted = [], adders = [];
+    poly.forEach((p, i) => {
+      if (polyCurve[i]) return;
+      (polyMeta[i]?.u ? uncounted : counted).push(p);
+      for (const ft of polyMeta[i]?.add || []) adders.push({ at: p, ft });
+    });
+    return { lines, counted, uncounted, adders, tally: draftRunTally(polyMeta, polyCurve) };
+  }, [tool, poly, polyCurve, polyMeta]);
   // Mid-gesture: the last click was a bow point, so the NEXT click closes that
   // arc rather than opening another. The live preview reads the same flag.
   const bowOpen = polyCurve.length > 0 && polyCurve[polyCurve.length - 1] && poly.length >= 2;
@@ -514,7 +553,7 @@ export default function TakeoffCanvas() {
     let dLen = 0, dCross = 0;
     for (let i = 1; i < poly.length; i++) {
       const a = poly[i - 1], b = poly[i];
-      dLen += Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (!polyMeta[i]?.gap) dLen += Math.hypot(b[0] - a[0], b[1] - a[1]);   // a G jump is not run length
       dCross += a[0] * b[1] - b[0] * a[1];
     }
     draftStatsRef.current.len = dLen;
@@ -734,6 +773,7 @@ export default function TakeoffCanvas() {
   const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" / "panelsched" tools — ISOLATED from poly so it can never leak into a measure shape
   const [racewayOpen, setRacewayOpen] = useState(false);          // "+ raceway" builder dialog
+  const [quickPickOpen, setQuickPickOpen] = useState(false);      // the item search (a Space tap, or /) — components/QuickPick.jsx
   const [panelDraft, setPanelDraft] = useState(null);         // Import-panel-schedule approval draft { panel, sheet_id, region, source } (null = dialog closed)
   const [panelSchedules, setPanelSchedules] = useState([]);   // imported panel schedules — additive `panel_schedules` payload key (lib/panelSchedules.js)
   const panelBusyRef = useRef(false);                         // a panel read (text or OCR) in flight — a second marquee waits
@@ -791,6 +831,11 @@ export default function TakeoffCanvas() {
   const scanBusyRef = useRef(false);         // a paid schedule OCR read is in flight — blocks re-fire from a rapid re-draw
   const panRef = useRef(null);
   const spaceRef = useRef(false);
+  const spaceTapRef = useRef(null);     // { at, panned } while Space is down — a drag makes it a pan, not a tap
+  const spaceTapFnRef = useRef(null);   // what a Space tap does right now (set in the render body)
+  const toolMismatchRef = useRef(null);
+  const activeMeasureRef = useRef(null); // the active item's tool ("count" | "linear" | "area"), for the key guard
+  const activeTagRef = useRef(""); // { t, at } — a tool key that didn't fit the item, waiting for a second press
   const crossVRef = useRef(null);
   const crossHRef = useRef(null);
   const rubberRef = useRef(null);
@@ -2751,10 +2796,28 @@ export default function TakeoffCanvas() {
     return () => { el.removeEventListener("wheel", onWheel); if (raf) cancelAnimationFrame(raf); };
   }, [applyTf, scheduleSync, zoomAround, promoteStage]);
 
-  // Space = temporary pan (any tool)
+  // Space: HOLD and drag = temporary pan (any tool), as always. A quick TAP
+  // (released fast, no drag) = spaceTapFnRef: mid-run it drops an adder,
+  // otherwise it opens the item search. Default is prevented so Space never
+  // "clicks" whatever button last had focus.
   useEffect(() => {
-    const down = (e) => { if (e.code === "Space" && !e.repeat && e.target.tagName !== "INPUT") { spaceRef.current = true; if (containerRef.current) containerRef.current.style.cursor = "grab"; } };
-    const up = (e) => { if (e.code === "Space") { spaceRef.current = false; if (containerRef.current) containerRef.current.style.cursor = ""; } };
+    const typing = (e) => { const t = e.target.tagName; return t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || e.target.isContentEditable; };
+    const down = (e) => {
+      if (e.code !== "Space" || typing(e)) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      spaceRef.current = true; spaceTapRef.current = { at: performance.now(), panned: false };
+      if (containerRef.current) containerRef.current.style.cursor = "grab";
+    };
+    const up = (e) => {
+      if (e.code !== "Space") return;
+      const tap = spaceTapRef.current;
+      spaceTapRef.current = null; spaceRef.current = false;
+      if (containerRef.current) containerRef.current.style.cursor = "";
+      if (!tap || typing(e)) return;
+      e.preventDefault();
+      if (!tap.panned && performance.now() - tap.at < 400) spaceTapFnRef.current?.();
+    };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
@@ -2771,6 +2834,7 @@ export default function TakeoffCanvas() {
       // inherits this effect's guards — a "?" typed into a condition tag or
       // with a toolbar menu open must not pop a dialog over the work.
       if (e.key === "?") { e.preventDefault(); setGuideOpen(true); return; }
+      if (e.key === "/") { e.preventDefault(); setQuickPickOpen(true); return; }   // the item search, like a Space tap
       if (e.key === "Enter") {
         // router offer confirm takes the key FIRST (RFC #59 slice 5): the
         // offer is the most recent thing the user was told ⏎ does, and it
@@ -2788,6 +2852,15 @@ export default function TakeoffCanvas() {
       }
       const lower = e.key.toLowerCase();
       if (viewRef.current === "gallery") return;
+      // G mid-run = a disconnected point: the next click starts a new segment
+      // (press again to take it back). Anywhere else G still opens the sheets.
+      if (lower === "g" && tool === "linear" && poly.length) {
+        e.preventDefault();
+        const on = !gapNextRef.current;
+        setGapNext(on);
+        setCommitMsg(on ? "Disconnected point — the next click starts a new segment; the jump isn't measured. G again cancels." : "Jump cancelled — the run continues from the last point.");
+        return;
+      }
       if (lower === "g") { setView("gallery"); return; }
       if (lower === "f") { toggleFocusMode(); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
@@ -2829,7 +2902,22 @@ export default function TakeoffCanvas() {
       }
       const map = { v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension", y: "symbol" };
       const t = map[lower];
-      if (t) setTool(t);
+      if (t) {
+        // the item decides the tool: a key that doesn't fit the active item
+        // (L on a receptacle) asks for a second press instead of quietly
+        // measuring a count item as a run
+        const want = TOOL_MEASURE[t], have = activeMeasureRef.current;
+        if (want && have && want !== have && TOOL_MEASURE[tool] !== want) {
+          const pend = toolMismatchRef.current, now = performance.now();
+          if (!(pend && pend.t === t && now - pend.at < 4000)) {
+            toolMismatchRef.current = { t, at: now };
+            setCommitMsg(`${activeTagRef.current} is a ${have} item. Press ${e.key.toUpperCase()} again to use the ${want} tool anyway, or tap Space to pick another item.`);
+            return;
+          }
+        }
+        toolMismatchRef.current = null;
+        setTool(t);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -2933,7 +3021,7 @@ export default function TakeoffCanvas() {
     if (tool !== "zone") resetZone();
     if (prevToolRef.current === "zone" && tool !== "zone") clearPoly();
     prevToolRef.current = tool;
-  }, [tool]);
+  }, [tool]); // eslint-disable-line react-hooks/exhaustive-deps -- clearPoly only calls setters and a ref
 
   // ── pointer ────────────────────────────────────────────────────────────────
   function onPointerDown(e) {
@@ -2945,6 +3033,7 @@ export default function TakeoffCanvas() {
     // (There is no Pan tool — Select's open-canvas drag and the deferred-click
     // hold-drag below cover the rest of the modeless-pan doctrine.)
     if (e.button === 1 || e.button === 2 || spaceRef.current) {
+      if (spaceTapRef.current) spaceTapRef.current.panned = true;
       promoteStage();
       panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -3040,7 +3129,15 @@ export default function TakeoffCanvas() {
       // Curve alternates bow → end → bow → end. A bow needs a vertex behind it
       // to arc away from, so the first point of a trace is always a corner.
       const wantCurve = CURVABLE.has(tool) && (curveMode !== !!(ev && ev.altKey));
-      addPoint(p, wantCurve && poly.length > 0 && !bowOpen);
+      if (tool === "linear") {
+        // electrical runs: every click is a COUNTED point, Shift-click an
+        // uncounted bend; after a G the point starts a new segment and the
+        // jump into it is not run length. A segment's first point is a corner.
+        const gap = gapNextRef.current && poly.length > 0;
+        const meta = { ...(ev && ev.shiftKey ? { u: true } : {}), ...(gap ? { gap: true } : {}) };
+        if (gapNextRef.current) setGapNext(false);
+        addPoint(p, wantCurve && poly.length > 0 && !bowOpen && !gap, meta);
+      } else addPoint(p, wantCurve && poly.length > 0 && !bowOpen);
     }
     else if (tool === "count") commitCount(p);
     else if (tool === "rect" || tool === "deduct-rect") {
@@ -3449,7 +3546,7 @@ export default function TakeoffCanvas() {
     if (angleOn && anchor && !bowOpen && !snapRef.current && !panRef.current) {
       const sc = tfRef.current.scale;
       if (Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) >= 12 / sc)
-        lock = angleSnap(anchor, cur, e.shiftKey);
+        lock = angleSnap(anchor, cur, e.shiftKey && tool !== "linear");   // on a run, Shift means an uncounted point
       if (lock) { angleRef.current = lock.pt; cur = lock.pt; }
     }
 
@@ -3512,6 +3609,8 @@ export default function TakeoffCanvas() {
         const sf = w * h;
         txt = `${fmtCheckLen(w, units)} × ${fmtCheckLen(h, units)} · ${num(areaVal(sf, units))} ${areaUnit(units)}${units === "metric" ? "" : ` · ${num(sf / 9)} SY`}`;
         over = w >= CARPET_ROLL_FT - 0.02 || h >= CARPET_ROLL_FT - 0.02;
+      } else if (tool === "linear" && gapNextRef.current && !panelActive) {
+        txt = "G · next click starts a new segment";
       } else if (drawing && anchor && liveUpp && !panelActive) {
         // line/polyline: live segment length, ALWAYS (not just under the 45° lock).
         // With a bow open the segment IS the arc, so measure along it — reading
@@ -3542,7 +3641,7 @@ export default function TakeoffCanvas() {
         const st = draftStatsRef.current;
         const segPx = Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]);
         const segLen = (bowOpen ? arcLength(poly[poly.length - 2], anchor, cur) : segPx) * liveUpp;
-        const totLen = (st.len + segPx) * liveUpp;
+        const totLen = (st.len + (gapNextRef.current ? 0 : segPx)) * liveUpp;   // a pending G jump is not run length
         const p0 = poly[0], pn = poly[poly.length - 1];
         const crossSum = st.cross + (pn[0] * cur[1] - cur[0] * pn[1]) + (cur[0] * p0[1] - p0[0] * cur[1]);
         const areaSf = (Math.abs(crossSum) / 2) * liveUpp * liveUpp;
@@ -3593,7 +3692,7 @@ export default function TakeoffCanvas() {
     }
     if (rubberRef.current) {
       const cas = rubberCasingRef.current;
-      if (!panRef.current && drawing && poly.length > 0) {
+      if (!panRef.current && drawing && poly.length > 0 && !gapNextRef.current) {   // a pending G: the next click is a jump, so no band
         // With a bow open the band runs from the arc's START and goes dashed —
         // it is the chord under the bow, a reference line, not the boundary.
         const last = poly[bowOpen ? poly.length - 2 : poly.length - 1];
@@ -3726,7 +3825,10 @@ export default function TakeoffCanvas() {
         : Number(s.height_ft) || Number(condById[s.condition_id]?.height_ft) || 0;
       return `${tag} · ${fa(a)} wall (${fl(lf)} × ${num(h, 2)}′)`;
     }
-    if (s.measure_role === "linear") return `${tag} · ${fl(lf)}${a > 0 ? ` · ${fa(a)} border` : ""}`;
+    if (s.measure_role === "linear") {
+      const pts = runCountedPoints(s), add = runAdderLf(s);
+      return `${tag} · ${fl(lf + add)}${add > 0 ? ` (${fl(lf)} + ${fl(add)} adders)` : ""}${pts ? ` · ${pts} pt${pts === 1 ? "" : "s"}` : ""}${a > 0 ? ` · ${fa(a)} border` : ""}`;
+    }
     return `${tag} · ${faSY(a)}${lf > 0 ? ` · ${fl(lf)} perim` : ""}`;
   }
   // Edge-insert affordance: the nearest point ON an edge of the selected shape,
@@ -4276,7 +4378,9 @@ export default function TakeoffCanvas() {
       const [head, ...rest] = h.runs;
       targets.push({ id: h.id, next: { verts_norm: norm(head), computed: qty(openLen(head)) } });
       for (const piece of rest) {
-        const { id: _id, created_at: _ct, ...carry } = src;
+        // run points and adders stay with the first piece (lib/runPoints.js) —
+        // copied onto every piece, a cut would count them twice
+        const { id: _id, created_at: _ct, run: _run, ...carry } = src;
         mint.push({ ...carry, verts_norm: norm(piece), computed: qty(openLen(piece)) });
       }
     }
@@ -4346,25 +4450,62 @@ export default function TakeoffCanvas() {
     // offer to make it a rule (#88). Detection only; nothing applies here.
     if (asDeduct) maybeOfferRule(res.shapes[res.shapes.length - 1], res.shapes);
   }
-  function commitLinear(points, curved = false, baked = false) {
-    if (points.length < 2) return;
-    if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
-    const tp = panelAt(points[0][0]);
-    const upp = uppFor(tp.key);
-    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+  // one linear shape (not dispatched) — the run commit below adds its point data
+  function linearShapeFor(tp, upp, points, curved = false, baked = false) {
     // curved: verts stay the clicked CONTROL points (drag one → re-smooths);
     // length always comes from the flattened spline
     const LF = openLen(curved ? flattenCurve(points) : points) * upp;
     const tIn = Number(aCond?.thickness_in) || 0; // borders/feature strips: SF = LF × T/12
-    dispatchShape({ type: "add", shapes: [{
+    return {
       sheet_id: tp.key, condition_id: activeCond, measure_role: "linear",
       ...(curved ? { curved: true } : {}),
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { perimeter_lf: +LF.toFixed(2), area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0 },
       ...(activeLabel ? { label: activeLabel } : {}),
       origin: { method: "manual", ...(baked ? { curved: true } : {}) },
-    }] });
+    };
+  }
+  // A traced run (electrical fork, lib/runPoints.js): counted points, adders,
+  // and G jumps. Each segment between jumps is its own linear shape, all
+  // sharing one run.group and landing as ONE undo step. A segment with a single
+  // point can't be a line; its counted point and adders ride the neighbouring
+  // segment at their own position, so nothing placed is lost.
+  function commitLinearRun() {
+    // polyMetaRef, not polyMeta: ⏎ arrives through a key handler that only
+    // re-subscribes when poly changes, and a Space adder changes meta alone
+    const d = dedupeDraft(poly, polyCurve, polyMetaRef.current);
+    if (d.pts.length < 2) return;
+    if (spansPanels(d.pts)) { setCommitMsg(SPAN_MSG); return; }
+    const tp = panelAt(d.pts[0][0]);
+    const upp = uppFor(tp.key);
+    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
+    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    const norm = ([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h];
+    const pieces = splitDraftRun(d.pts, d.curve, d.meta);
+    const group = pieces.length > 1 ? uid("run") : null;
+    const out = [];
+    let carry = null;
+    for (const pc of pieces) {
+      if (pc.pts.length < 2) {
+        const m = strandedMarks(pc);
+        carry = carry ? { counted: [...carry.counted, ...m.counted], adders: [...carry.adders, ...m.adders] } : m;
+        continue;
+      }
+      const ci = pc.curve.reduce((a, c, i) => (c ? (a.push(i), a) : a), []);
+      const drawn = ci.length ? flattenArcRing(pc.pts, ci, false) : pc.pts;
+      const shape = linearShapeFor(tp, upp, drawn, false, ci.length > 0);
+      const run = buildRun(pc, drawn, norm, carry);
+      carry = null;
+      if (run || group) shape.run = { ...(run || { n: drawn.length, counted: [], adders: [] }), ...(group ? { group } : {}) };
+      out.push(shape);
+    }
+    if (!out.length) { setCommitMsg("A run needs two points between jumps."); return; }
+    if (carry) {   // a lone point after the last jump
+      const last = out[out.length - 1];
+      const r = last.run || { n: last.verts_norm.length, counted: [], adders: [] };
+      last.run = { ...r, counted: [...r.counted, ...carry.counted.map((p) => ({ i: -1, at: norm(p) }))], adders: [...r.adders, ...carry.adders.map((a) => ({ i: -1, at: norm(a.at), ft: a.ft }))] };
+    }
+    dispatchShape({ type: "add", shapes: out });
   }
   // Surface Area — trace the wall run in plan; SF = traced LF × the condition's
   // height. The wall-tile "stack" workflow: set tile height once, trace walls.
@@ -5712,7 +5853,7 @@ export default function TakeoffCanvas() {
     // kind of geometry. flattenArcRing is the identity on an all-straight trace.
     const drawn = curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly;
     if (tool === "surface") commitSurface(drawn, curveIdx.length > 0);
-    else if (tool === "linear") commitLinear(drawn, false, curveIdx.length > 0);
+    else if (tool === "linear") commitLinearRun();
     else commitPoly(curveIdx.length ? flattenArcRing(poly, curveIdx, true) : poly, tool === "deduct", { curved: curveIdx.length > 0 });
     clearPoly();
   }
@@ -7257,6 +7398,20 @@ export default function TakeoffCanvas() {
 
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   const aCond = condById[activeCond];
+  const activeMeasure = useMemo(() => conditionMeasure(aCond, shapes), [aCond, shapes]);
+  activeMeasureRef.current = activeMeasure;
+  activeTagRef.current = aCond?.finish_tag || "This item";
+  const adderFt = conditionAdderFt(aCond);
+  // A Space tap: mid-run, one adder at the last point; otherwise the item search.
+  spaceTapFnRef.current = () => {
+    if (menuDepthRef.current > 0 || quickPickOpen) return;
+    if (tool === "linear" && poly.length > 0 && aCond) {
+      addAdder(adderFt);
+      setCommitMsg(`Adder ${adderTag(adderFt)} at the last point (${aCond.finish_tag}). ⌫ takes it back.`);
+      return;
+    }
+    setQuickPickOpen(true);
+  };
   // resolve pinned ids to live conditions for the top-bar palette (a stale id
   // renders nothing — the persisted list is pruned on save/delete, this is the
   // render-time guard)
@@ -7477,9 +7632,17 @@ export default function TakeoffCanvas() {
   // no such affordance — a digit press or an Apply click must never silently
   // move a selected shape's quantities. EVERY activation surface, reassigning
   // or not, dismisses a live bulk selection.
-  const activateCondition = (id, { reassign = true } = {}) => {
-    if (reassign && tool === "select" && selectedId) reassignSelected(id);
+  const activateCondition = (id, { reassign = true, arm = true } = {}) => {
+    const reassigning = reassign && tool === "select" && selectedId;
+    if (reassigning) reassignSelected(id);
     setActiveCond(id);
+    // the item decides the tool (electrical fork): picking a count item arms
+    // Count, a run arms Linear — unless this pick re-assigned a selected
+    // takeoff, or a trace is in progress (switching tools would drop its points)
+    if (arm && !reassigning && !poly.length) {
+      const m = conditionMeasure(condById[id], shapes);
+      if (m && TOOL_MEASURE[tool] !== m) setTool(m);
+    }
     panelSelectionRef.current?.();   // plain activation dismisses a live bulk selection (panel view state)
   };
   // The label analogue (#111): with a shape selected in Select mode this re-labels
@@ -8266,6 +8429,10 @@ export default function TakeoffCanvas() {
             {paletteConds.length >= PALETTE_MAX && (
               <span style={{ fontSize: 10.5, color: "var(--ink-muted)", fontStyle: "italic" }}>full ({PALETTE_MAX})</span>
             )}
+            <button type="button" onClick={() => setQuickPickOpen(true)} title="Find an item to take off — tap Space (or /) anywhere on the plan"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--cobalt)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--cobalt)", fontWeight: 600 }}>
+              <Icon name="search" size={12} />Find item<span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, border: "1px solid var(--cobalt)", padding: "0 3px" }}>Space</span>
+            </button>
             {/* add a condition without opening the (now-collapsed) sidebar */}
             <button type="button" onClick={addCondition} title="Add a new condition"
               style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>+ condition</button>
@@ -8898,7 +9065,16 @@ export default function TakeoffCanvas() {
                       if (s.measure_role === "linear") {
                         // line_style governs linear outlines (surface_area keeps its dash-dot identity above)
                         const lpts = s.curved ? flattenCurve(pts) : pts;
-                        return <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? DS.selection.color : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
+                        const line = <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? DS.selection.color : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
+                        if (!s.run) return line;
+                        // counted points and adders (electrical runs, lib/runPoints.js)
+                        const mk = runMarkPositions(s);
+                        return (
+                          <g key={s.id}>
+                            {line}
+                            <RunMarks counted={mk.counted.map(([x, y]) => [x * p.img.w, y * p.img.h])} adders={mk.adders.map((a) => ({ at: [a.at[0] * p.img.w, a.at[1] * p.img.h], ft: a.ft }))} color={col} z={z} />
+                          </g>
+                        );
                       }
                       const ded = s.measure_role === "deduct";
                       // #137 — a RECONCILED deduct (cuts_shape_id) renders as a
@@ -9506,11 +9682,13 @@ export default function TakeoffCanvas() {
                   four lines below — same expression, same dash, so a dashed
                   zone accent never rides a solid casing ribbon. */}
               {DS.casing && poly.length >= 2 && tool !== "surface" && (tool === "linear"
-                ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" strokeLinejoin="round" />
+                ? (draftRun?.lines || []).map((l, k) => <polyline key={`dc${k}`} data-draft="casing" points={l.map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" strokeLinejoin="round" />)
                 : ringOutline
                 ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
                 : <polygon data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinejoin="round" />)}
-              {poly.length >= 2 && (tool === "linear" || tool === "surface"
+              {poly.length >= 2 && (tool === "linear"
+                ? (draftRun?.lines || []).map((l, k) => <polyline key={`dl${k}`} points={l.map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.accent} strokeWidth={DS.draft.lineWidth / tf.scale} strokeDasharray={drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />)
+                : tool === "surface"
                 ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : DS.accent} strokeWidth={(tool === "surface" ? 3.5 : DS.draft.lineWidth) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
                 : ringOutline
                 ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
@@ -9526,7 +9704,7 @@ export default function TakeoffCanvas() {
                   the bow would read as the boundary and it isn't one. Nothing
                   bolds while a bow is still open; the live preview is the
                   segment then. */}
-              {poly.length >= 2 && !bowOpen && DS.lastSegWidth != null && (
+              {poly.length >= 2 && !bowOpen && DS.lastSegWidth != null && !polyMeta[poly.length - 1]?.gap && (
                 polyCurve[poly.length - 2] && poly.length >= 3
                   ? <>
                       {DS.casing && tool !== "surface" && <path data-draft="casing" d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
@@ -9582,6 +9760,7 @@ export default function TakeoffCanvas() {
                   </g>
                 );
               })}
+              {draftRun && <RunMarks counted={draftRun.counted} uncounted={draftRun.uncounted} adders={draftRun.adders} color={activeColor} z={tf.scale} />}
               {/* edge labels (Precision "all" / Site Glass "last2"): placed-edge
                   midpoints priced with the draft's own sheet scale, in the check
                   tool's white-halo idiom. Surface keeps its own readout; a segment
@@ -9593,6 +9772,7 @@ export default function TakeoffCanvas() {
                 const kids = [];
                 for (let i = start; i < poly.length - 1; i++) {
                   if (polyCurve[i] || polyCurve[i + 1]) continue;   // arc segment — chord label would misstate
+                  if (polyMeta[i + 1]?.gap) continue;               // a G jump is not run length
                   const a = poly[i], b = poly[i + 1];
                   kids.push(
                     <text key={i} data-draft="edge-label" x={(a[0] + b[0]) / 2} y={(a[1] + b[1]) / 2 - 6 / z} fontSize={10.5 / z} fontWeight={600}
@@ -9791,6 +9971,18 @@ export default function TakeoffCanvas() {
                 </>
               ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the condition editor</div>;
             })()
+          ) : tool === "linear" && poly.length >= 1 && liveUpp && draftRun ? (
+            (() => {
+              const traced = draftRun.lines.reduce((n, l) => n + openLen(l), 0) * liveUpp;   // jumps excluded, arcs along the arc
+              const { counted, adderFt: add } = draftRun.tally;
+              return (
+                <>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(lenVal(traced + add, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{lenUnit(units)}</span></div>
+                  <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{counted} counted pt{counted === 1 ? "" : "s"}{add > 0 ? ` · ${fl(traced)} + ${fl(add)} adders` : ""}{draftRun.lines.length > 1 ? ` · ${draftRun.lines.length} segments` : ""}</div>
+                  <div style={{ fontSize: 11.5, color: gapNext ? "var(--cobalt)" : "var(--ink-muted)", marginTop: 4 }}>{gapNext ? "Disconnected — the next click starts a new segment" : "⇧-click uncounted · G disconnected · Space adder · ⏎ finish"}</div>
+                </>
+              );
+            })()
           ) : tool === "zone" && poly.length >= 1 ? (
             zoneTraceCross ? (
               <span style={{ color: "var(--c-danger)", fontSize: 12.5 }}>Zone on one sheet — that point landed on a different sheet. Finish is disabled; Esc or Undo last point to fix it.</span>
@@ -9824,7 +10016,9 @@ export default function TakeoffCanvas() {
               const foot = <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{shTag} · selected{selShape.origin === "agent" ? " · agent" : ""}</div>;
               if (selShape.measure_role === "count") return <>{big(num(c.count || 1, 0), "EA")}{foot}</>;
               if (selShape.measure_role === "linear") {
-                return <>{big(num(lenVal(lf, units)), lenUnit(units))}{a > 0 ? sub(`${fa(a)} border`) : null}{foot}</>;
+                const add = runAdderLf(selShape), pts = runCountedPoints(selShape);
+                const runLine = [pts ? `${pts} counted pt${pts === 1 ? "" : "s"}` : "", add > 0 ? `${fl(lf)} + ${fl(add)} adders` : ""].filter(Boolean).join(" · ");
+                return <>{big(num(lenVal(lf + add, units)), lenUnit(units))}{runLine ? sub(runLine) : null}{a > 0 ? sub(`${fa(a)} border`) : null}{foot}</>;
               }
               if (selShape.measure_role === "surface_area") {
                 const h = selShape.height_override === true
@@ -9842,7 +10036,16 @@ export default function TakeoffCanvas() {
               );
             })()
           ) : (
-            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
+            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : tool === "linear" ? "Click to start a run — every click is a counted point" : tool === "count" ? "Click each one to count it" : tool === "select" ? "Tap Space to find an item" : "Click to trace an area"}</div>
+          )}
+          {tool === "linear" && aCond && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title={`Space mid-run adds this much length at the last point (a drop, a makeup) — set per item. Placed adders keep their own length.`}>
+              <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>Space adds</span>
+              <input name="adder-ft" type="number" min="0" step="1" value={aCond.adder_ft ?? adderFt}
+                onChange={(e) => updateCond({ adder_ft: e.target.value === "" ? null : Math.max(0, parseFloat(e.target.value) || 0) })}
+                style={{ width: 52, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+              <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>ft to {aCond.finish_tag}</span>
+            </div>
           )}
           {selShape?.measure_role === "surface_area" && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title="Height for THIS wall only — full-height tile here, 4-ft wainscot there, same condition. ↺ returns to the condition height.">
@@ -10092,6 +10295,25 @@ export default function TakeoffCanvas() {
           listFolder={cloudMode ? pickerListFolder : undefined}
           addSheets={pickerAddSheets}
           onAdded={async () => { await refreshSheets(); setStatus("ready"); }}
+        />
+      )}
+
+      {quickPickOpen && (
+        <QuickPick
+          conditions={conditions}
+          templates={templates}
+          measureOf={(c) => conditionMeasure(c, shapes)}
+          qtyOf={(c) => {
+            const r = projRowById.get(c.id);
+            if (!r || !r.shape_count) return "";
+            const m = conditionMeasure(c, shapes);
+            if (m === "linear") return `${num(lenVal(r.lf, units), 0)} ${lenUnit(units)}${r.ea ? ` · ${r.ea} pts` : ""}`;
+            if (m === "area") return `${num(areaVal(r.total_sf, units), 0)} ${areaUnit(units)}`;
+            return `${r.ea} EA`;
+          }}
+          onPickCondition={(id) => activateCondition(id, { reassign: false })}
+          onPickTemplate={applyTemplate}
+          onClose={() => setQuickPickOpen(false)}
         />
       )}
 

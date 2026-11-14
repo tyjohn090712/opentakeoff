@@ -44,6 +44,7 @@ export function sanitizeTemplates(raw) {
       }
       if ("seed" in out && typeof out.seed !== "boolean") delete out.seed;
       if ("measure" in out && !["count", "linear", "area"].includes(out.measure)) delete out.measure;
+      if ("adder_ft" in out && !(typeof out.adder_ft === "number" && out.adder_ft > 0 && Number.isFinite(out.adder_ft))) delete out.adder_ft;   // the Space adder length (lib/runPoints.js)
       if ("attrs_by_name" in out) {
         const ok = isPlainObject(out.attrs_by_name)
           ? Object.fromEntries(Object.entries(out.attrs_by_name).filter(([k, v]) => k.trim() && typeof v === "string" && v.trim()))

@@ -76,7 +76,8 @@ export const TOOLS = [
   [["H"], "Highlighter"], [["K"], "Check a dimension against what the drawing says"],
   [["N"], "Dimension line — a standalone length label at the sheet's scale (markup, never counted)"],
   [["V"], "Select"], [["G"], "Sheet gallery"],
-  [["1", "–", "9"], "Arm condition N"],
+  [["tap", "Space"], "Find an item — picking it arms its tool (/ does the same)"],
+  [["1", "–", "9"], "Arm condition N (and its tool)"],
   [["hold", "M"], "Push-to-talk dictation — release runs it, Esc discards"],
 ];
 
@@ -86,7 +87,10 @@ export const DRAW = [
   [["⌘", "Z"], "Mid-trace pops the last point; otherwise undo"],
   [["⇧", "⌘", "Z"], "Redo"],
   [["Esc"], "Back out one level — vertex pick first, then anything in progress"],
-  [["hold", "⇧"], "Force the 45° angle lock at any cursor angle"],
+  [["hold", "⇧"], "Force the 45° angle lock at any cursor angle (not on a Linear run)"],
+  [["⇧", "click"], "Linear: an uncounted point — every other click counts"],
+  [["G"], "Linear, mid-run: disconnected point — the next click starts a new segment"],
+  [["tap", "Space"], "Linear, mid-run: add an adder at the last point"],
   [["⌥", "click"], "In One-Click: carve a cutout inside a selected space"],
   [["⇧", "click"], "Insert a vertex at an edge midpoint, and drag it"],
   [["⌘", "C"], "Copy"], [["⌘", "V"], "Paste under the cursor"], [["⌘", "D"], "Duplicate"],

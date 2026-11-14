@@ -253,3 +253,41 @@ test("chest: a kept raceway run files under Raceway, arms the linear tool, and n
   assert.deepEqual(sanitizeTemplates([tpl])[0].category, "Raceway");
   assert.deepEqual(seedTemplates([tpl], ELECTRICAL_DEFAULTS), ELECTRICAL_DEFAULTS);
 });
+
+// ── the item search (Space) and the item-owns-its-tool rule ──────────────────
+import { quickPickResults, conditionMeasure, TOOL_MEASURE } from "../src/lib/chest.js";
+
+test("quick pick: the project's items first, chest items it lacks after; a tag that starts with the query ranks first", () => {
+  const conds = [
+    { id: "a", finish_tag: "REC-20", desc: "Duplex receptacle, 20A", materials: [] },
+    { id: "b", finish_tag: "SW-1P", desc: "Single-pole switch", materials: [], attrs: { "col-1": "26 27 26.10" } },
+    { id: "c", finish_tag: "REC-GFCI", desc: "GFCI duplex receptacle", materials: [] },
+  ];
+  const chest = [t("REC-20"), t("REC-GFCI-WP", { desc: "GFCI, weather-resistant" }), t("FA-SS", { desc: "Speaker/strobe" })];
+  assert.deepEqual(quickPickResults(conds, chest, "").map((r) => r.kind === "project" ? r.c.id : r.t.finish_tag), ["a", "b", "c"]);   // empty box: just the project
+  const gfci = quickPickResults(conds, chest, "gfci");
+  assert.deepEqual(gfci.map((r) => r.kind), ["project", "chest"]);
+  assert.equal(gfci[1].kind === "chest" && gfci[1].t.finish_tag, "REC-GFCI-WP");
+  assert.ok(!quickPickResults(conds, chest, "rec-20").some((r) => r.kind === "chest"), "a chest item already in the project is not offered twice");
+  assert.equal(quickPickResults(conds, chest, "strobe")[0].kind, "chest");
+  const rec = quickPickResults(conds, chest, "rec");
+  assert.deepEqual(rec.slice(0, 2).map((r) => r.kind === "project" && r.c.id), ["a", "c"]);
+  assert.equal(quickPickResults(conds, chest, "26.10")[0].kind === "project" && quickPickResults(conds, chest, "26.10")[0].c.id, "b");   // Est. code label
+  assert.deepEqual(quickPickResults(conds, chest, "nothing-like-this"), []);
+});
+
+test("an item arms its own tool: its measure, else what it has been measured with; new items carry it", () => {
+  assert.equal(conditionMeasure({ id: "x", measure: "linear" }, []), "linear");
+  assert.equal(conditionMeasure({ id: "x" }, [{ condition_id: "x", measure_role: "count" }]), "count");
+  assert.equal(conditionMeasure({ id: "x" }, []), null);
+  assert.equal(conditionMeasure(undefined, []), null);
+  assert.equal(TOOL_MEASURE.symbol, "count");
+  assert.equal(TOOL_MEASURE.rect, "area");
+  const c = instantiateTemplate(t("LT-STRIP", { measure: "linear", desc: "Strip LED", category: "Lighting", adder_ft: 6 }));
+  assert.equal(c.measure, "linear"); assert.equal(c.desc, "Strip LED"); assert.equal(c.category, "Lighting"); assert.equal(c.adder_ft, 6);
+  const back = templateFromCondition(c, [], {});
+  assert.equal(back.desc, "Strip LED"); assert.equal(back.adder_ft, 6);
+  // every starter condition knows its tool, so a new project picks right from the first click
+  for (const d of ELECTRICAL_DEFAULTS) assert.ok(measureTool(d), `${d.finish_tag} has a measure`);
+  assert.deepEqual(sanitizeTemplates([t("X", { adder_ft: -3 }), t("Y", { adder_ft: 8 })]).map((x) => x.adder_ft), [undefined, 8]);
+});

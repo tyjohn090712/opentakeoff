@@ -44,6 +44,7 @@ import { RENDER_SCALE, parseSheetKey, sheetBaseLabelFromKey } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
 import { dimLabel } from "./units";
+import { runTotalLf, runCountedPoints } from "./runPoints.js";
 
 const COBALT = "#1f3fc7";
 const DEDUCT_RED = "#b03a26";
@@ -207,7 +208,7 @@ function shapeChip(shape, cond, M = false) {
     case "floor_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU}`;
     case "deduct": return `-${num(uA(cp.area_sf || 0))} ${AU} deduct`;
     case "surface_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU} wall`;
-    case "linear": return `${tag} · ${num(uL(cp.perimeter_lf || 0))} ${LU}`;
+    case "linear": { const pts = runCountedPoints(shape); return `${tag} · ${num(uL(runTotalLf(shape)))} ${LU}${pts ? ` · ${pts} pt${pts === 1 ? "" : "s"}` : ""}`; }
     default: return "";
   }
 }

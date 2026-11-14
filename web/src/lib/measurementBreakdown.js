@@ -5,6 +5,7 @@
 //
 // Height rule matches the readout's own selected-shape reading: an explicit
 // per-wall override wins, then the shape's own height, then the condition's.
+import { runTotalLf } from "./runPoints.js";
 
 export function wallHeightFt(shape, cond) {
   if (shape?.height_override === true) return Number(shape.height_ft) || 0;
@@ -18,7 +19,7 @@ export function measurementBreakdown(shapes, conditionId, cond) {
     if (!s || s.condition_id !== conditionId) continue;
     const c = s.computed || {};
     if (s.measure_role === "linear") {
-      rows.push({ n: rows.length + 1, id: s.id, role: "linear", lf: c.perimeter_lf || 0, h: 0, sf: 0 });
+      rows.push({ n: rows.length + 1, id: s.id, role: "linear", lf: runTotalLf(s), h: 0, sf: 0 });
     } else if (s.measure_role === "surface_area") {
       const lf = c.perimeter_lf || 0, h = wallHeightFt(s, cond);
       rows.push({ n: rows.length + 1, id: s.id, role: "wall", lf, h, sf: c.area_sf ?? lf * h });

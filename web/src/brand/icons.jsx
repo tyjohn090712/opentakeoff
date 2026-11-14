@@ -46,6 +46,7 @@ export const icons = {
   check: (s) => <I size={s}><path d="M5 13 L 10 18 L 19 7" /></I>,
   sheets: (s) => <I size={s}><rect x="4" y="4" width="7" height="7" /><rect x="13" y="4" width="7" height="7" /><rect x="4" y="13" width="7" height="7" /><rect x="13" y="13" width="7" height="7" /></I>,
   sideBySide: (s) => <I size={s}><rect x="4" y="5" width="7" height="14" /><rect x="13" y="5" width="7" height="14" /></I>,
+  search: (s) => <I size={s}><circle cx="10.5" cy="10.5" r="6" /><path d="M15 15 L 20 20" /></I>,
   close: (s) => <I size={s}><path d="M6 6 L 18 18 M18 6 L 6 18" /></I>,
   chevronDown: (s) => <I size={s}><path d="M6 9 L 12 15 L 18 9" /></I>,
   chevronLeft: (s) => <I size={s}><path d="M15 6 L 9 12 L 15 18" /></I>,

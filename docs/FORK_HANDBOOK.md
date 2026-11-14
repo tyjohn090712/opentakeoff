@@ -33,11 +33,12 @@ From the estimator, condensed; the longer version is "How this estimator works" 
 - **Waste:** all wire and all MC cable carry **10%** (on the material line and, for MC, the condition); conduit conditions 5%; conduit lengths get no line waste (offered, not yet answered).
 - **Names need not match Accubid exactly** (they want to match ConEst, unseen). `racewayName` in `web/src/lib/raceway.ts` is the one place the format lives.
 - **Tool chest, not an item/assembly database.** The estimating system owns labor, prices and assemblies. The seam is the **Est. code** column; when ConEst's item list can be exported, import it as a read-only pick list.
+- **LiveCount is the model for picking and tracing** (2026-11-14). Pick the item and its tool comes with it. On a run: every click is a counted point, `⇧`-click uncounted, `G` a disconnected point, a `Space` tap an adder of the item's length; with no run in progress `Space` opens the item search. Layout plan agreed: (1) this, (2) an always-open item list on the left with editing in a drawer, (3) one top row, a status bar with snap toggles, a labeled right drawer, flooring tools hidden (not deleted).
 - **Device depth matters:** `20A duplex`, `20A switched duplex`, `wall-mount speaker/strobe` and so on, each its own item. The starter catalog is mine, from common practice; the estimator will correct it.
 
 ## 3. What exists (and where)
 
-Waves 1–4, the raceway builder, and the tool chest are built. Details, lessons, and open items are in ELECTRICAL_FORK.md.
+Waves 1–4, the raceway builder, the tool chest, and step 1 of the LiveCount-style picking work are built. Details, lessons, and open items are in ELECTRICAL_FORK.md.
 
 | Capability | Code |
 |---|---|
@@ -46,13 +47,16 @@ Waves 1–4, the raceway builder, and the tool chest are built. Details, lessons
 | Raceway builder (conduit and MC cable) | `raceway.ts`, `components/RacewayBuilder.jsx` |
 | Tool chest and starter devices | `chest.js`, `deviceCatalog.js`, Takeoffs panel › Chest tab (`components/TakeoffsPanel.jsx`) |
 | Material line `mult` and `waste_pct` | `totals.js` (`conditionTotals`, `coverageText`) |
+| Item search (`Space`), item arms its tool, run points / adders / `G` jumps | `components/QuickPick.jsx`, `chest.js` (`quickPickResults`, `conditionMeasure`), `runPoints.js`, `components/RunMarks.jsx` |
 | Tests (synthetic data only) | `web/test/{panelSchedule,panelRaster,panelSchedules,raceway,chest}.test.ts` |
 
-**Not built yet** (see "Next, in order" in ELECTRICAL_FORK.md): ConEst-name matching, suggested raceway config per circuit and a homerun checklist, the per-panel "breakers: in vendor package / loose" setting, the panel and gear list by floor and area, circuit-tag matching, chest CSV import/export, the Est. code pick-list import. **Deliberately not built:** an NEC conduit-fill check (the Chapter 9 tables couldn't be verified against the code text; a quietly wrong check is worse than none).
+**Not built yet** (see "Next, in order" in ELECTRICAL_FORK.md): layout steps 2 and 3 (section 2), ConEst-name matching, suggested raceway config per circuit and a homerun checklist, the per-panel "breakers: in vendor package / loose" setting, the panel and gear list by floor and area, circuit-tag matching, chest CSV import/export, the Est. code pick-list import. **Deliberately not built:** an NEC conduit-fill check (the Chapter 9 tables couldn't be verified against the code text; a quietly wrong check is worse than none).
 
 ## 4. Traps in the code (each one cost real time)
 
 - **A condition's ×N scales everything on it, raceway footage included** (×7 on 100 LF reads 700 LF of conduit). Never use it as a conductor count. The count is a material line's own `mult`.
+- **A run's points and adders live on the shape (`run`), not in `computed`.** Totals add them through `runPoints.js` helpers; anything new that sums a linear shape's LF or EA must use `runTotalLf` / `runCountedPoints`, or it silently misses adders and points.
+- **`Space` is tap vs hold.** Hold-and-drag pans; a quick tap runs `spaceTapFnRef` (adder mid-run, else the search). Key handlers re-subscribe on `poly`, not on point meta: read `polyMetaRef` / `gapNextRef` in them, never the state (a stale copy lost two adders once).
 - **Two different "waste"s.** The condition's `waste_pct` feeds the Report's "w/ waste" columns and never the buy list. A material line's `waste_pct` is added before rounding and is the one that reaches the buy list. `mult` and line `waste_pct` are line-local: they are not part of the material-library link (`libFields`).
 - **New projects seed from starred chest items** (`seed !== false`, so a library saved before the chest still seeds); none starred means the built-in defaults. Chest-only items (`seed: false`) never flood a project.
 - **Don't rename `finish_tag`;** it's the field name through the whole engine. Don't re-theme condition palettes (user data).
@@ -96,7 +100,7 @@ Selectors that took effort to find:
 - Real drawings for testing live only in the scratchpad (the Drive folder below). Tests use made-up names; scan a diff for project names before committing.
 
 **Git and GitHub.**
-- Develop on the branch the session names (it has been `claude/stoic-galileo-er1wci`). There is **no `gh`** and the REST route is limited: load the GitHub tools with ToolSearch (`mcp__github__*`). The repo is **`tyjohn090712/opentakeoff`** (not `tyjohnson…`).
+- Develop on the branch the session names (it has been `claude/stoic-galileo-er1wci`, and `ccr-e8c0892e-w7l1b4`). There is **no `gh`** and the REST route is limited: load the GitHub tools with ToolSearch (`mcp__github__*`). The repo is **`tyjohn090712/opentakeoff`** (not `tyjohnson…`).
 - **Never force-push** (the classifier denies it). After a squash-merge the branch diverges from `main`. Restart it without force: `git fetch origin main claude/<branch> && git checkout -B claude/<branch> origin/main && git merge -s ours origin/claude/<branch>`, then commit and push normally.
 - Commits end with the `Co-Authored-By` and `Claude-Session` trailers the session gives. PR bodies follow `.github/PULL_REQUEST_TEMPLATE.md` and end with its attribution line. Squash-merge.
 - **Actions are off on the fork:** no checks run on PRs. Run `npm run check` yourself and say so in the PR.
@@ -126,10 +130,10 @@ Selectors that took effort to find:
 
 | | |
 |---|---|
-| Merged to `main` | #3 Waves 2 and 3.1 · #4 panel schedule import · #5 `OCP SIZE` / no-POLES templates and two OCR fixes · #6 raceway builder (conduit and MC cable, line `mult` and `waste_pct`) |
-| Open, awaiting the estimator | #7 tool chest, ~120 starter devices, Est. code column, seeding change, this handbook, and the root `CLAUDE.md` (branch `claude/stoic-galileo-er1wci`). The handbook reaches new sessions only after #7 merges |
-| Tests | 1753 (3 skipped), all passing under `npm run check` |
-| Waiting on the estimator | ConEst access and item names; confirmation that "SW duplex" means switched; their own device list (candela variants, fixture types); whether conduit lengths should carry waste; whether projects must be shared between estimators |
+| Merged to `main` | #3 Waves 2 and 3.1 · #4 panel schedule import · #5 `OCP SIZE` / no-POLES templates and two OCR fixes · #6 raceway builder (conduit and MC cable, line `mult` and `waste_pct`) · #7 tool chest, starter devices, Est. code column, this handbook |
+| On a branch, not yet a PR | Step 1 of the LiveCount-style work: `Space` item search, items arm their tool, counted / uncounted points, `G` jumps, adders (branch `ccr-e8c0892e-w7l1b4`) |
+| Tests | 1763 (3 skipped), all passing under `npm run check` |
+| Waiting on the estimator | Whether counted points should feed a separate count item and whether `Space` while counting should do anything but search; ConEst access and item names; confirmation that "SW duplex" means switched; their own device list (candela variants, fixture types); whether conduit lengths should carry waste; whether projects must be shared between estimators |
 
 ## 9. Session start checklist
 

@@ -244,6 +244,14 @@ The **Chest** tab holds the items you reach for on every bid—a device type, a 
 - **★ starts new projects.** A starred item is added to every new project; ☆ items stay in the chest until you apply them. With nothing starred, a new project starts on the built-in defaults (`REC-20`, `REC-GFCI`, `SW-1P`, `SW-3W`, `DATA-1`, `LT-2X4`, `LT-STRIP`, `PNL`). A library saved before the chest existed keeps seeding as it always did.
 - **Raceway runs keep themselves.** **+ raceway** can file each run it builds under *Raceway* (**Keep in the tool chest**, on by default), so the next job picks `3/4 EMT 3-#10 CONC` from the chest instead of rebuilding it—and it arms the Linear tool either way.
 
+### Find an item—tap `Space`
+
+Tap `Space` anywhere on the plan (or press `/`, or click **Find item** in the band under the toolbar) and a search box opens. Type part of a tag, a description, a group, or an Est. code—`gfci`, `strobe`, `3/4 emt`, `26 27`—then `↑`/`↓` and `⏎`. The takeoff's own items list first, each with its running quantity; chest items the takeoff doesn't have yet follow, and picking one adds it. `Esc` closes.
+
+**An item arms its own tool.** Picking a count item arms Count, a run arms Linear, an area arms Area—from the search, a palette chip, a digit, or the Takeoffs panel. The item knows its tool from the chest, or from what it has already been measured with. Pressing a tool key that doesn't fit the active item (`L` on a receptacle) doesn't switch: the status bar reads *"REC-20 is a count item. Press L again to use the linear tool anyway, or tap Space to pick another item."* A second press within four seconds goes ahead.
+
+Holding `Space` and dragging still pans; only a quick tap opens the search. Mid-run, a tap adds an adder instead (§5, Linear).
+
 ### The quick-access palette and `1`–`9`
 
 The band under the toolbar is your working set: **pin** a condition there (the pushpin on its panel row) or **drag** a row onto the band. Palette chips wear cobalt number badges—**that number is the hotkey**: `1`–`9` arm palette conditions in palette order (drag chips to reorder; the numbers follow). Up to 9 pin, mapping 1:1 onto the digits; with nothing pinned, the digits fall back to list order. Single-click a chip to arm it; double-click to open its row in the panel. A digit press only ever arms—it never reassigns a selected shape (§7).
@@ -440,13 +448,23 @@ Two clicks: one corner, then the opposite corner. Between them the cursor chip r
 
 An open run, two or more points → LF. The **╱ Straight / ⌒ Curve** switch works here too (see Area, above)—a run that bends partway along commits as one line. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
 
+A run is traced the way LiveCount traces one:
+
+- **Counted points.** Every click is a counted point, drawn as a dot in the item's color. Each one adds 1 EA to the item, so the Report shows a run's LF *and* its points, and a material line with a **count** basis (connectors, boxes) is figured from them.
+- **Uncounted points.** Hold `⇧` while you click for a bend that isn't counted (a hollow ring while you trace). On a run, `⇧` no longer forces the 45° lock; the **45°** toggle still works.
+- **Disconnected points.** Press `G` mid-run and the next click starts a new segment. The jump between them isn't measured. Press `G` again to take it back. The segments finish together as one run and one undo step.
+- **Adders.** Tap `Space` mid-run to add extra length at the last point—a drop, a makeup. It reads **+10′** on the plan; tap again for another. The length is per item: **Space adds _10_ ft to 〈TAG〉** in the readout card while Linear is armed, 10 ft until you change it. An adder keeps the length it was placed with.
+- **Taking things back.** `⌫` mid-run removes the last thing you did: a pending `G`, then the newest adder on the last point, then the point.
+
+The readout card shows the run total (traced + adders), the counted points, and the segment count. Select a finished run and it reads the same, and the hover chip adds *(traced + adders)*. The adders are part of the run's LF everywhere: the Report, the buy list, the exports, and the marked set. Moving or dragging a run's points keeps its counts and adders; a deduct that cuts a run in two leaves them on the first piece.
+
 ### Surface Area (`S`)
 
 Trace a wall run in plan; wall SF = traced LF × the condition's **height**. There's no prompt mid-trace—the height comes from the condition, and the tool refuses if it has none: *"Set a height for 〈TAG〉 (H in the condition editor) — Surface Area = traced LF × height."* After commit, select the wall and the readout offers a **this wall** height override (with a ↺ reset)—full-height tile here, 4-ft wainscot there, same condition. A wall keeps the height it was drawn at even if you later change the condition's default, and an explicit override is honored outright—even `0`.
 
 ### Count (`C`)
 
-One click, one marker, one EA. Counts commit immediately on click and are the one measurement that works without a scale.
+One click, one marker, one EA. Counts commit immediately on click and are the one measurement that works without a scale. A `Space` tap while counting opens the item search.
 
 ### Cut Out — deducts (`D`, `⇧D`)
 
@@ -496,7 +514,7 @@ refusal.
 
 ### The 45°/90° angle lock
 
-With the **45°** toggle on (it's on by default), the segment you're drawing locks to the 45° family—0°, 45°, 90°, 135° across the sheet—whenever the cursor comes within ~4° of an axis. The lock is quiet: the star swells, the preview line thickens, and the chip reads the locked angle plus the live segment length. **The click commits the exactly-on-axis point**, so walls come out dead square. Hold `⇧` to force the lock at any cursor angle; toggle **45°** off for free-angle tracing.
+With the **45°** toggle on (it's on by default), the segment you're drawing locks to the 45° family—0°, 45°, 90°, 135° across the sheet—whenever the cursor comes within ~4° of an axis. The lock is quiet: the star swells, the preview line thickens, and the chip reads the locked angle plus the live segment length. **The click commits the exactly-on-axis point**, so walls come out dead square. Hold `⇧` to force the lock at any cursor angle (not on a Linear run, where `⇧` marks an uncounted point); toggle **45°** off for free-angle tracing.
 
 ### Snap (beta)
 
@@ -913,7 +931,8 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `N` | Dimension line—a standalone length label at the sheet's scale (markup, never counted) |
 | `K` | Check a dimension |
 | `V` | Select |
-| `G` | Sheet gallery |
+| `G` | Sheet gallery (mid-run on Linear: a disconnected point—the next click starts a new segment) |
+| Tap `Space` | Find an item—picking it arms its tool (`/` does the same). Mid-run on Linear, a tap adds an adder instead |
 | Hold `M` | Push-to-talk dictation—release runs the command, `Esc` discards (see [§17](#17-voice-and-the-command-box)) |
 | `?` | The in-app quick reference—the five-minute path and every shortcut (`Esc` closes) |
 
@@ -921,7 +940,8 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 
 | Key | Action |
 |---|---|
-| `1`–`9` | Arm condition N—palette order once you've pinned a palette, list order otherwise. Never reassigns a selected shape. |
+| `1`–`9` | Arm condition N—palette order once you've pinned a palette, list order otherwise. Never reassigns a selected shape. Arms the item's tool too. |
+| A tool key that doesn't fit the item | Asks first: press it again within 4 s to switch anyway |
 
 ### Drawing
 
@@ -934,7 +954,10 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⌘Z` | Mid-trace: pop the last point. Otherwise: **undo** |
 | `⇧⌘Z` | Redo |
 | `Esc` | Back out one level: clear the vertex pick first, then everything in progress (trace, proposal, calibration, check, selection, markup draft, armed stamp, zone) |
-| Hold `⇧` | Force the 45° angle lock at any cursor angle |
+| Hold `⇧` | Force the 45° angle lock at any cursor angle (not on a Linear run) |
+| `⇧`-click (Linear) | An uncounted point—a bend that adds no EA |
+| Tap `Space` (Linear, mid-run) | Add an adder at the last point, at the item's adder length |
+| `G` (Linear, mid-run) | Disconnected point: the next click starts a new segment |
 | `Q` | Flip the ╱ Straight / ⌒ Curve switch mid-trace (Area, Cut Out, Line, Surface) |
 | `⌥`-click (Area / Cut Out / Line / Surface) | Place the *other* kind of point for one click—a bow point in Straight mode, a corner in Curve mode |
 | `⌥`-click (One-Click) | Carve a cutout inside a selected space |

@@ -2,6 +2,22 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-11-14 — pick the item, not the tool; runs with counted points, adders and jumps (electrical fork)
+
+### Added
+- **Find an item with a tap of `Space`** (or `/`, or **Find item** in the band under the toolbar). A search box over the plan finds items by tag, description, group or Est. code: the takeoff's own first, with their running quantity, then chest items it doesn't have yet (picking one adds it). `web/src/components/QuickPick.jsx`; ranking in `lib/chest.js` (`quickPickResults`). Holding `Space` and dragging still pans.
+- **Counted and uncounted points on a run.** Every click on a Linear run is a counted point (a dot in the item's color) and adds 1 EA to the item, so a run reports its LF and its points, and count-based material lines (connectors, boxes) are figured from them. `⇧`-click places an uncounted bend.
+- **Disconnected points.** `G` mid-run: the next click starts a new segment, and the jump isn't measured. The segments commit together as one run and one undo step.
+- **Adders.** A `Space` tap mid-run adds extra length at the last point (a drop, a makeup), tagged **+10′** on the plan. The length is set per item in the readout card (**Space adds _10_ ft**). Adders count in the run's LF everywhere: the Report, the buy list, the exports, and the marked set. Logic in `web/src/lib/runPoints.js`; marks drawn by `components/RunMarks.jsx`.
+
+### Changed
+- **An item arms its own tool.** Picking an item from the search, a palette chip, `1`–`9`, or the Takeoffs panel arms Count, Linear or Area to match it. A tool key that doesn't fit the active item asks for a second press instead of quietly measuring a receptacle as a run. The eight starter conditions now carry their tool, description and group.
+- **`⇧` on a Linear run** marks an uncounted point instead of forcing the 45° lock (the lock still works on every other tool).
+- **`⌫` mid-run** takes back a pending `G` first, then the newest adder on the last point, then the point.
+
+### Fixed
+- **The readout card said "Click to trace an area" with the Linear or Count tool armed.** It now says what the armed tool does.
+
 ## 2026-11-13 — the Library becomes a tool chest, with a starter device catalog (electrical fork)
 
 ### Added
