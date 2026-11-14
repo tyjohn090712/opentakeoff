@@ -126,8 +126,8 @@ Selectors that took effort to find:
 
 | | |
 |---|---|
-| Merged to `main` | #3 Waves 2 and 3.1 · #4 panel schedule import · #5 `OCP SIZE` / no-POLES templates and two OCR fixes · #6 raceway builder (conduit and MC cable, line `mult` and `waste_pct`) |
-| Open, awaiting the estimator | #7 tool chest, ~120 starter devices, Est. code column, seeding change, this handbook, and the root `CLAUDE.md` (branch `claude/stoic-galileo-er1wci`). The handbook reaches new sessions only after #7 merges |
+| Merged to `main` | #3 Waves 2 and 3.1 · #4 panel schedule import · #5 `OCP SIZE` / no-POLES templates and two OCR fixes · #6 raceway builder (conduit and MC cable, line `mult` and `waste_pct`) · #7 tool chest, ~120 starter devices, Est. code column, this handbook and the root `CLAUDE.md` |
+| Open PRs | none |
 | Tests | 1753 (3 skipped), all passing under `npm run check` |
 | Waiting on the estimator | ConEst access and item names; confirmation that "SW duplex" means switched; their own device list (candela variants, fixture types); whether conduit lengths should carry waste; whether projects must be shared between estimators |
 
