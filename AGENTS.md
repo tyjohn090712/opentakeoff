@@ -1,5 +1,7 @@
 # AGENTS.md — a map of this repo for coding agents (and fast-moving humans)
 
+> **This is the electrical-only fork (`tyjohn090712/opentakeoff`). Read [`docs/FORK_HANDBOOK.md`](docs/FORK_HANDBOOK.md) before anything else:** who the work is for, the decisions already made, how this environment ships code, and the mistakes not to repeat. Where it disagrees with the sections below about shipping, deploy, or CI, the handbook wins for this fork.
+
 OpenTakeoff is a **client-only React app**: a PDF construction-takeoff canvas for flooring (useful for any trade). No backend, no database, no auth—everything runs and persists in the browser. Apache-2.0. (For the one-page project pitch and vision, see [`AGENT_BRIEF.md`](AGENT_BRIEF.md); for capability → code mapping, see [`FEATURES.md`](FEATURES.md).)
 
 ## Run / build / check

@@ -31,6 +31,25 @@ export function sanitizeTemplates(raw) {
       for (const k of ["color", "fill", "hatch"]) {
         if (k in out && typeof out[k] !== "string") delete out[k];
       }
+      // the tool-chest fields (lib/chest.js): a malformed one is dropped, so the
+      // item falls back to the group "Other", seeds as before, arms no tool, and
+      // carries no labels — never a throw in the panel that renders them
+      if ("category" in out) {
+        if (typeof out.category === "string" && out.category.trim()) out.category = out.category.trim().slice(0, 40);
+        else delete out.category;
+      }
+      if ("desc" in out) {
+        if (typeof out.desc === "string" && out.desc.trim()) out.desc = out.desc.trim().slice(0, 120);
+        else delete out.desc;
+      }
+      if ("seed" in out && typeof out.seed !== "boolean") delete out.seed;
+      if ("measure" in out && !["count", "linear", "area"].includes(out.measure)) delete out.measure;
+      if ("attrs_by_name" in out) {
+        const ok = isPlainObject(out.attrs_by_name)
+          ? Object.fromEntries(Object.entries(out.attrs_by_name).filter(([k, v]) => k.trim() && typeof v === "string" && v.trim()))
+          : {};
+        if (Object.keys(ok).length) out.attrs_by_name = ok; else delete out.attrs_by_name;
+      }
       return out;
     });
 }

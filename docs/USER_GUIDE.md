@@ -231,7 +231,18 @@ A **condition** is one finish—`LVT-1`, `CPT-2`, `RB-1`—and it's what every m
 
 **Delete** (the row's ✕) asks first when the condition owns shapes—*"Delete 〈TAG〉 and its N takeoff(s)? This can't be undone."*—and means it: the cascade is deliberately outside the undo stack (§8).
 
-There's no per-condition duplicate; the Library fills that role—read on.
+There's no per-condition duplicate; the tool chest fills that role—read on.
+
+### The tool chest
+
+The **Chest** tab holds the items you reach for on every bid—a device type, a fixture, a raceway run—so a new job is a few clicks, not a rebuild. Items sit in **groups** (Receptacles, Switches, Lighting, Lighting controls, Fire alarm, Data / low voltage, Power & equipment, Gear, Raceway, or any group you name), and the search box finds them by tag, group, description, label, or material—`strobe`, `GFCI`, `26 27`.
+
+- **Starter devices.** **+ add N starter devices** fills the chest with about 120 device types: 20 receptacles (15A and 20A duplex, **switched duplex**, GFCI, weather-resistant, USB, isolated-ground, surge, emergency, quad, 208V, dryer, range, twist-lock, floor box, poke-thru), switches and dimmers, fixtures, lighting controls, 26 fire alarm devices (**speaker/strobe, wall** and **ceiling**, strobes, horn/strobes, detectors, pull stations, modules, panels), low-voltage outlets, cameras and readers, equipment connections, and gear. Items already in the chest are skipped. Tags are short codes—`REC-20`, `REC-20-SW`, `FA-SS-W`—and each carries a one-line description. Count items bring the ancillaries bought with the device (box, plate, bracket), never the device itself: the EA count *is* the device count. They are starting points; edit any one and save it back.
+- **Apply uses it.** **Apply** adds the item to the takeoff and arms its tool—Count for a device, Linear for a run. If the takeoff already has that tag, Apply just selects it; there is never a twin.
+- **Save your own.** **+ save 〈tag〉 to the chest** snapshots the active condition—appearance, waste, materials, and its labels—and asks which group it belongs in. Saving over an item keeps its group. **⊞** moves an item to another group, **✎** renames it, **✕** removes it.
+- **Labels travel with the item.** A condition's custom-column values (an *Est. code*, a CSI division) save with it and come back in any project, matched to the project's columns **by name**; a missing column or value is created. A new project starts with a blank **Est. code** column, and the condition's **Est. code** select has **＋ new value…**, so you can type a code on the spot.
+- **★ starts new projects.** A starred item is added to every new project; ☆ items stay in the chest until you apply them. With nothing starred, a new project starts on the built-in defaults (`REC-20`, `REC-GFCI`, `SW-1P`, `SW-3W`, `DATA-1`, `LT-2X4`, `LT-STRIP`, `PNL`). A library saved before the chest existed keeps seeding as it always did.
+- **Raceway runs keep themselves.** **+ raceway** can file each run it builds under *Raceway* (**Keep in the tool chest**, on by default), so the next job picks `3/4 EMT 3-#10 CONC` from the chest instead of rebuilding it—and it arms the Linear tool either way.
 
 ### The quick-access palette and `1`–`9`
 
@@ -242,7 +253,7 @@ The band under the toolbar is your working set: **pin** a condition there (the p
 The **☰ Takeoffs** rail button docks the panel (it starts collapsed; the palette band is the primary surface). Four tabs:
 
 - **Takeoffs**—every condition with live totals for the open sheets (`SF · SF wall · LF · EA`), a shape count, a **⌖** that zooms the canvas to the condition's takeoffs (double-clicking the row does the same), the Supporting Materials button, the pin, and delete. Above the list: a filter box, **A→Z** natural sort and **≡ grp** tag-family grouping (views only—hotkey numbering never changes). **⌘-click / ⇧-click** rows to bulk-select conditions, then set waste or line color on all of them, or bulk-delete.
-- **Library**—reusable condition templates, shared across every plan in this browser. **+ save 〈tag〉 to the library** snapshots the active condition (appearance, waste, H/T, materials); **Apply** adds it to any project as a fresh condition. A fresh workspace seeds from this library—tune your house conditions once and every new job starts with them.
+- **Chest**—your tool chest: reusable items shared across every plan in this browser, grouped and searchable ([The tool chest](#the-tool-chest), next).
 - **Materials**—a browser-wide materials library. Attaching a library material to a condition copies its values and keeps a link (⛓); library edits reach linked lines only when you push them, and overridden fields show amber with a per-field ↺ revert.
 - **Columns**—project-wide **custom columns** (for example, *CSI Division*) that classify conditions for report grouping and exports, and the **shape-label vocabulary** (§7).
 

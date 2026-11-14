@@ -28,6 +28,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { keyText } from "../lib/keys.ts";
 import { Icon } from "../brand/icons.jsx";
 import { attrValue, columnLabel } from "../lib/conditionColumns.js";
+import { chestGroups, seedsNewProjects, measureTool } from "../lib/chest.js";
+import { missingStarters } from "../lib/deviceCatalog.js";
 import { SPEC_FIELDS } from "../lib/reportColumns.js";
 import { num } from "../lib/num.js";
 import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heightStep, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../lib/units";
@@ -375,7 +377,8 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
 // Per-condition custom-column assignment — one select per defined column.
 // Unassigned = attrs key absent; a value deleted from the vocabulary
 // keeps the condition's string, shown as "<value> (removed)".
-function ColumnSelects({ columns, cond, onAssign }) {
+const NEW_VALUE = "__new_value__";
+function ColumnSelects({ columns, cond, onAssign, onAddValue }) {
   return (
     <>
       {columns.map((cc) => {
@@ -383,10 +386,17 @@ function ColumnSelects({ columns, cond, onAssign }) {
         return (
           <label key={cc.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, marginRight: 12, marginBottom: 6 }}>
             <span style={{ color: "var(--ink-muted)" }}>{columnLabel(cc)}</span>
-            <select name="assign-column-value" value={v} onChange={(e) => onAssign(cc.id, e.target.value)} style={{ ...ip, background: "var(--paper-bright)" }}>
+            <select name="assign-column-value" value={v} style={{ ...ip, background: "var(--paper-bright)" }}
+              onChange={(e) => {
+                if (e.target.value !== NEW_VALUE) { onAssign(cc.id, e.target.value); return; }
+                // type a value straight into the column's list and assign it — no trip to the Columns tab
+                const typed = (window.prompt(`New ${columnLabel(cc)}:`) || "").trim();
+                if (typed) { onAddValue(cc.id, typed); onAssign(cc.id, typed); }
+              }}>
               <option value="">Unassigned</option>
               {cc.values.map((val) => <option key={val} value={val}>{val}</option>)}
               {v && !cc.values.includes(v) && <option value={v}>{v} (removed)</option>}
+              {onAddValue && <option value={NEW_VALUE}>＋ new value…</option>}
             </select>
           </label>
         );
@@ -414,7 +424,7 @@ function AddValueInput({ onAdd }) {
 // the docked panel AND the restored top-bar band render the SAME editor (one
 // source of truth, like the app's single activateCondition path). Owns only its
 // hatch-popover open state; everything else flows through the passed handlers.
-export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondParam, onAssignAttr, conditionColumns = [], layout = "stack", units = "imperial", rollInfo = null }) {
+export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondParam, onAssignAttr, onAddColumnValue, conditionColumns = [], layout = "stack", units = "imperial", rollInfo = null }) {
   const [hatchOpen, setHatchOpen] = useState(false);
   const activeColor = c.color || "#c96442";
   // Top-bar band ("row") only: the two palettes fold into two swatch buttons
@@ -539,7 +549,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       {conditionColumns.length > 0 && isRow && rule()}
       {conditionColumns.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2 }} title="Classify this condition — the Report can group and export by these (manage columns in the Columns tab)">
-          <ColumnSelects columns={conditionColumns} cond={c} onAssign={onAssignAttr} />
+          <ColumnSelects columns={conditionColumns} cond={c} onAssign={onAssignAttr} onAddValue={onAddColumnValue} />
         </div>
       )}
       {/* Imported product spec (mfr/style/color/size/description) — editable here,
@@ -762,7 +772,7 @@ function TakeoffsPanel({
   onDuplicateCondition, onSplitCondition, onFollowFamilyRow, onRestoreDroppedRow,
   onDeriveTransitions, onLocateTransition,
   onBulkWaste, onBulkColor, onBulkDelete,
-  onSaveTemplate, onApplyTemplate, onRenameTemplate, onDeleteTemplate,
+  onSaveTemplate, onApplyTemplate, onRenameTemplate, onDeleteTemplate, onToggleSeed, onSetCategory, onAddStarters,
   onAttachLibMaterial, onPromoteMaterial, onRevertMatField, matFieldOverridden,
   onUpdateLibMaterial, onPushLibUpdate, onDeleteLibMaterial, onAddLibMaterial,
   onAddColumn, onRenameColumn, onDeleteColumn, onAddColumnValue, onRemoveColumnValue, onRenameColumnValue,
@@ -773,6 +783,8 @@ function TakeoffsPanel({
   const [condQuery, setCondQuery] = useState("");             // live filter over the condition list (transient, never persisted)
   const [matLibQuery, setMatLibQuery] = useState("");         // Materials tab search (transient; describes the browser-global library, so hydrate/epoch leaves it alone)
   const [closedGroups, setClosedGroups] = useState(() => new Set()); // collapsed tag-family groups in the grouped view
+  const [chestQuery, setChestQuery] = useState("");            // tool-chest search (transient)
+  const [closedChest, setClosedChest] = useState(() => new Set()); // collapsed chest groups
   // multi-select for bulk edit — VIEW STATE ONLY, never persisted. ⌘/ctrl-click
   // toggles a row into the set, ⇧-click ranges from the last toggle in the
   // current view order, plain click clears (and activates, as always).
@@ -995,7 +1007,7 @@ function TakeoffsPanel({
             used to live in its own toolbar row above the canvas. Extracted to
             ConditionAppearanceEditor so the docked panel AND the top-bar band
             render the same editor from one source of truth. */}
-        {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} conditionColumns={conditionColumns} units={units} rollInfo={rollByCond?.get(c.id) || null} />}
+        {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} onAddColumnValue={onAddColumnValue} conditionColumns={conditionColumns} units={units} rollInfo={rollByCond?.get(c.id) || null} />}
         {on && onDeriveTransitions && <TransitionsAction cond={c} sources={transitionSources} draft={transDraft} setDraft={setTransDraft}
           result={transResult} setResult={setTransResult} onDerive={onDeriveTransitions} onLocate2={onLocateTransition} />}
         {matOn && (
@@ -1089,7 +1101,7 @@ function TakeoffsPanel({
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
           <span style={{ display: "inline-flex", gap: 2 }}>
-            {[["takeoffs", `Takeoffs · ${multiSheet ? "these sheets" : "this sheet"}`], ["library", `Library${templates.length ? ` (${templates.length})` : ""}`], ["materials", `Materials${matLib.length ? ` (${matLib.length})` : ""}`], ["columns", `Columns${conditionColumns.length ? ` (${conditionColumns.length})` : ""}`]].map(([id, label]) => (
+            {[["takeoffs", `Takeoffs · ${multiSheet ? "these sheets" : "this sheet"}`], ["library", `Chest${templates.length ? ` (${templates.length})` : ""}`], ["materials", `Materials${matLib.length ? ` (${matLib.length})` : ""}`], ["columns", `Columns${conditionColumns.length ? ` (${conditionColumns.length})` : ""}`]].map(([id, label]) => (
               <button key={id} onClick={() => setPanelTab(id)}
                 style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{label}</button>
             ))}
@@ -1167,39 +1179,79 @@ function TakeoffsPanel({
           </div>
         </div>
         </>}
-        {/* Library tab — reusable condition templates, browser-wide */}
-        {panelTab === "library" && (
+        {/* Chest tab — the tool chest: reusable condition templates, browser-wide, grouped and
+            searchable. Each item carries its labels and the tool it arms; ★ items also start
+            new projects (a library saved before the chest existed seeds as it always did). */}
+        {panelTab === "library" && (() => {
+          const groups = chestGroups(templates, chestQuery);
+          const searching = chestQuery.trim().length > 0;
+          const inProject = new Set(conditions.map((c) => String(c.finish_tag || "").trim().toUpperCase()));
+          const starters = missingStarters(templates.map((t) => t.finish_tag)).length;
+          const tiny = { flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 };
+          return (
           <div style={{ flex: 1, overflow: "auto" }}>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-              Reusable condition templates, shared across every plan in this browser. A fresh workspace seeds from this library (built-in flooring defaults when it's empty).
+              Your tool chest — reusable items shared across every plan in this browser. Apply selects the item (adding it if the takeoff doesn't have it) and arms its tool. ★ items also start every new project; with none starred, new projects start on the built-in defaults.
             </div>
-            <div style={{ padding: "6px 12px 10px" }}>
+            <div style={{ padding: "6px 12px 4px", display: "flex", flexDirection: "column", gap: 6 }}>
+              <input name="chest-search" value={chestQuery} onChange={(e) => setChestQuery(e.target.value)} placeholder="Search the chest — “strobe”, “GFCI”, a code…"
+                style={{ padding: "5px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 12.5 }} />
               <button onClick={onSaveTemplate} disabled={!aCond}
-                title="Snapshot the active condition (appearance, waste, H/T, materials) into the library"
+                title="Snapshot the active condition (appearance, waste, materials, labels) into the chest"
                 style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: aCond ? "pointer" : "default", fontSize: 12, color: aCond ? "var(--ink)" : "var(--ink-faint)" }}>
-                + save {aCond?.finish_tag || "the active condition"} to the library
+                + save {aCond?.finish_tag || "the active condition"} to the chest
+              </button>
+              <button onClick={onAddStarters} disabled={!starters}
+                title="Add the starter device catalog — receptacles, switches, fixtures, fire alarm, low voltage, equipment, gear. Items already in the chest are skipped."
+                style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: starters ? "pointer" : "default", fontSize: 12, color: starters ? "var(--ink)" : "var(--ink-faint)" }}>
+                {starters ? `+ add ${starters} starter devices` : "starter devices added"}
               </button>
             </div>
-            {templates.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>No templates yet — make a condition the way you like it, then save it here.</div>}
-            {templates.map((t, idx) => (
-              <div key={`${t.finish_tag}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
-                <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={t.hatch || "solid"} line={t.color} fill={t.fill} /></span>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.finish_tag}</div>
-                  <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>
-                    {t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}
+            {templates.length === 0 && <div style={{ padding: "6px 12px 12px", color: "var(--ink-muted)" }}>Nothing here yet — add the starter devices, or make a condition the way you like it and save it here.</div>}
+            {searching && groups.length === 0 && templates.length > 0 && <div style={{ padding: "6px 12px 12px", color: "var(--ink-muted)" }}>No chest item matches “{chestQuery}”.</div>}
+            {groups.map((g) => {
+              const closed = !searching && closedChest.has(g.name);
+              return (
+                <React.Fragment key={g.name}>
+                  <div onClick={() => setClosedChest((cs) => { const n = new Set(cs); if (n.has(g.name)) n.delete(g.name); else n.add(g.name); return n; })}
+                    style={{ position: "sticky", top: 0, zIndex: 1, display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderTop: "1px solid var(--ink-faint)", background: "var(--paper)", cursor: "pointer", fontSize: 11, color: "var(--ink-muted)" }}>
+                    <span style={{ width: 10 }}>{closed ? "▸" : "▾"}</span>
+                    <span style={{ fontWeight: 700, color: "var(--ink)" }}>{g.name}</span>
+                    <span>· {g.items.length}</span>
                   </div>
-                </div>
-                <button onClick={() => { onApplyTemplate(t); setPanelTab("takeoffs"); }} title="Add a condition from this template to the takeoff"
-                  style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 0, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
-                <button onClick={() => onRenameTemplate(idx)} title="Rename this template"
-                  style={{ flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                <button onClick={() => onDeleteTemplate(idx)} title="Remove this template from the library"
-                  style={{ flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
-              </div>
-            ))}
+                  {!closed && g.items.map(({ t, idx }) => {
+                    const starred = seedsNewProjects(t);
+                    const arm = measureTool(t);
+                    const here = inProject.has(String(t.finish_tag || "").trim().toUpperCase());
+                    return (
+                      <div key={`${t.finish_tag}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderTop: "1px solid var(--ink-faint)" }}>
+                        <button onClick={() => onToggleSeed(idx)} aria-pressed={starred}
+                          title={starred ? "Starts every new project — click to keep it in the chest only" : "In the chest only — click to also start every new project"}
+                          style={{ ...tiny, border: "none", padding: "0 2px", fontSize: 14, color: starred ? "var(--cobalt)" : "var(--ink-muted)" }}>{starred ? "★" : "☆"}</button>
+                        <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={t.hatch || "solid"} line={t.color} fill={t.fill} /></span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {t.finish_tag}{here && <span title="Already in this takeoff" style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: "var(--cobalt)" }}>✓</span>}
+                          </div>
+                          {t.desc && <div style={{ fontSize: 11, color: "var(--ink)", lineHeight: 1.3 }}>{t.desc}</div>}
+                          <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10, color: "var(--ink-muted)", lineHeight: 1.4 }}>
+                            {arm ? `${arm} · ` : ""}{t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}{t.attrs_by_name ? ` · ${Object.entries(t.attrs_by_name).map(([k, v]) => `${k}: ${v}`).join(", ")}` : ""}
+                          </div>
+                        </div>
+                        <button onClick={() => { onApplyTemplate(t); setPanelTab("takeoffs"); }} title={`${here ? "Select it" : "Add it to the takeoff"}${arm ? ` and arm the ${arm} tool` : ""}`}
+                          style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 0, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
+                        <button onClick={() => onSetCategory(idx)} title="Move to another group" style={tiny}>⊞</button>
+                        <button onClick={() => onRenameTemplate(idx)} title="Rename this item" style={tiny}>✎</button>
+                        <button onClick={() => onDeleteTemplate(idx)} title="Remove this item from the chest" style={{ ...tiny, color: "var(--c-danger)" }}>✕</button>
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
           </div>
-        )}
+          );
+        })()}
         {/* Materials tab — the material library (#47/#48): canonical
             consumables shared across every plan in this browser. Conditions
             COPY on attach (lib_id link); edits here never propagate unless

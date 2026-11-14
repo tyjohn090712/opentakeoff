@@ -9,6 +9,7 @@ import { RENDER_SCALE } from "./sheets";
 import { STALE_TAB_MESSAGE } from "./store.js";
 import { mintUuid, nowIso } from "./provenance.js";
 import { instantiateMaterial } from "./materials.js";
+import { seedTemplates, resolveTemplateAttrs, EST_CODE_COLUMN } from "./chest.js";
 import { PALETTE } from "../components/hatches.jsx";
 import {
   MIN_SCALE, MAX_SCALE,
@@ -72,4 +73,20 @@ export const instantiateTemplate = (t) => ({
 // Fresh-workspace seeding reads the user's template library first; the
 // built-in electrical defaults are only the empty-library fallback. Both paths
 // run instantiateTemplate — ONE condition constructor, no drift.
-export const seedConditions = (library) => (library?.length ? library : ELECTRICAL_DEFAULTS).map(instantiateTemplate);
+// Only chest items that start new projects seed (all of them in a library saved
+// before the chest existed); none starred → the built-in defaults.
+export const seedConditions = (library) => seedTemplates(library, ELECTRICAL_DEFAULTS).map(instantiateTemplate);
+
+// A fresh workspace: the seeded conditions with their labels mapped onto the
+// project's columns by name, and — only in a project with no columns at all —
+// a blank "Est. code" column to fill. Returns { conditions, columns }.
+export function seedWorkspace(library, existingColumns = []) {
+  let columns = existingColumns.length ? existingColumns : [{ id: uid("col"), name: EST_CODE_COLUMN, values: [] }];
+  const conditions = seedTemplates(library, ELECTRICAL_DEFAULTS).map((t) => {
+    const c = instantiateTemplate(t);
+    const r = resolveTemplateAttrs(columns, t.attrs_by_name, () => uid("col"));
+    columns = r.columns;
+    return Object.keys(r.attrs).length ? { ...c, attrs: r.attrs } : c;
+  });
+  return { conditions, columns };
+}

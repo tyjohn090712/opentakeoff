@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-11-13 — the Library becomes a tool chest, with a starter device catalog (electrical fork)
+
+### Added
+- **Tool chest.** The condition Library tab is now **Chest**: items in groups (Receptacles, Switches, Lighting, Lighting controls, Fire alarm, Data / low voltage, Power & equipment, Gear, Raceway, or your own), a search box over tag, group, description, labels, and material names, and a one-line description on each item. **Apply** arms the tool the item uses (Count, Linear) and, if the takeoff already has that tag, selects it instead of adding a twin. **⊞** moves an item to another group. Pure grouping, search, seeding and label rules in `web/src/lib/chest.js`.
+- **About 120 starter devices.** **+ add N starter devices** adds receptacles by amperage and function (15A and 20A duplex, **switched duplex**, GFCI, weather-resistant, USB, isolated-ground, surge, emergency, quad, 208V, dryer, range, twist-lock, floor box, poke-thru), switches and dimmers, fixtures, lighting controls, fire alarm devices (**speaker/strobe, wall and ceiling**, strobes, horn/strobes, detectors, pull stations, modules, NAC supplies, panels), low-voltage outlets, cameras and readers, equipment connections, and gear. The eight conditions a new project starts with are in it, unchanged. `web/src/lib/deviceCatalog.js`.
+- **Labels travel with a chest item.** A condition's custom-column values (an Est. code, a CSI division) are saved with it by column name and mapped onto any project's columns on Apply, creating the column or value when it's missing. A new project starts with a blank **Est. code** column, and the condition's column selects gain **＋ new value…** so a code can be typed in place.
+- **Keep in the tool chest** on the **+ raceway** dialog (on by default) files each run under *Raceway*; the builder also arms the Linear tool.
+
+### Changed
+- **★ decides what starts a new project.** Before, every saved template seeded every new project. Chest items now stay in the chest unless starred; with nothing starred, a new project starts on the built-in defaults. A library saved before this change has no flag and seeds exactly as it did. **+ save** asks for a group and no longer makes a template start new projects.
+
 ## 2026-11-12 — raceway runs are picked the way they're priced (electrical fork, Wave 3)
 
 ### Added

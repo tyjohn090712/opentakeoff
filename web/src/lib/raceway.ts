@@ -130,7 +130,9 @@ const wasteNote = `${WIRE_WASTE_PCT}% waste`;
 export function racewayTemplate(s: RacewaySpec, color: string) {
   const bad = racewayProblem(s);
   if (bad) throw new Error(bad);
-  const base = { finish_tag: racewayName(s), color, fill: color, hatch: "circuit" };
+  // category / measure / seed / desc are the tool-chest fields (lib/chest.js): a kept
+  // run sits under "Raceway", arms the linear tool, and never starts a new project
+  const base = { finish_tag: racewayName(s), color, fill: color, hatch: "circuit", category: "Raceway", measure: "linear", seed: false, desc: racewayLabel(s) };
   if (s.type === "MC") {
     return { ...base, waste_pct: WIRE_WASTE_PCT, materials: [
       { name: `${s.wire}/${s.count} MC cable`, per: 1, basis: "linear", unit: "lf", waste_pct: WIRE_WASTE_PCT, note: wasteNote },
