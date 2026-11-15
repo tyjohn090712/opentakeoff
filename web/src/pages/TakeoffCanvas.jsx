@@ -40,7 +40,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, extractSheetInfo, sheetDisplayName, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -314,7 +314,9 @@ export default function TakeoffCanvas() {
   // silently did nothing on prod. A direct scrollLeft write always lands.
   const scrollTabStrip = (dir) => { const el = tabStripRef.current; if (el) el.scrollLeft = Math.max(0, el.scrollLeft + dir * Math.max(160, el.clientWidth * 0.6)); };
   const [galleryLabels, setGalleryLabels] = useState({}); // sheetKey → title-block number, all files
+  const [galleryTitles, setGalleryTitles] = useState({}); // sheetKey → title-block sheet title ("FIRST FLOOR POWER PLAN"), all files
   const [pageLabels, setPageLabels] = useState({}); // { pageNum: "A003" } from the title block
+  const [pageTitles, setPageTitles] = useState({}); // { pageNum: "FIRST FLOOR POWER PLAN" } — a sheet is named "number - title" (sheetDisplayName)
   const [sheetGroup, setSheetGroup] = useState([]);   // sheetKeys shown side-by-side; [] = single-sheet mode
   const [sheetLevels, setSheetLevels] = useState({}); // sheetKey → level label ("L1") — persisted (additive `sheet_levels` key); groups the gallery for multi-floor sets
   const [lastGroup, setLastGroup] = useState([]);     // most recent side-by-side composition — "Regroup" restores it
@@ -1080,12 +1082,21 @@ export default function TakeoffCanvas() {
     if (!next.length) { setView("gallery"); return; }
     if (!sheetGroup.length && key === sheetKey) { const nb = next[Math.min(Math.max(i, 0), next.length - 1)]; if (nb) goToSheet(nb); }
   }
+  // How a sheet is named everywhere (tabs, pager, canvas, reports): the title
+  // block's "number - title", from the gallery scan or the active file's scan.
+  // The bare number (sheetBaseLabel) stays for deep links and image names.
+  const sheetName = (k) => {
+    if (isStitchKey(k)) return "";
+    const t = parseSheetKey(k);
+    const own = t.file === active;
+    return sheetDisplayName(galleryLabels[k] || (own ? pageLabels[t.page] : ""), galleryTitles[k] || (own ? pageTitles[t.page] : ""));
+  };
   const tabLabel = (k) => {
     if (isStitchKey(k)) return stitchById[k]?.name || "Stitched sheets";
     const lvl = sheetLevels[k] ? `${sheetLevels[k]} · ` : "";   // assigned floor/level rides every tab label
-    if (galleryLabels[k]) return lvl + galleryLabels[k];
+    const named = sheetName(k);   // "E101 - FIRST FLOOR POWER PLAN"
+    if (named) return lvl + named;
     const t = parseSheetKey(k);
-    if (t.file === active && pageLabels[t.page]) return lvl + pageLabels[t.page];
     const base = t.file.replace(/\.pdf$/i, "");
     return lvl + (t.page > 1 ? `${base} · ${t.page}` : base);
   };
@@ -1174,7 +1185,7 @@ export default function TakeoffCanvas() {
   // the FOCUSED panel (the one last clicked); single mode focuses the lone panel.
   const focusPanel = (focusKey && groupKeys.includes(focusKey) && panelByKey(focusKey)) || panels[0];
   const unitsPerPx = scales[focusPanel.key] ?? null;
-  const labelFor = (p) => stitchById[p.key]?.name || (p.file === active && pageLabels[p.page]) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
+  const labelFor = (p) => stitchById[p.key]?.name || sheetName(p.key) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
   // Scale semantics (why geometry divides by factorFor and calibration
   // multiplies back to baseline) are documented on the pure functions in
   // lib/panelGeometry.js; these wrappers bind the live scales/renderScalesRef.
@@ -2110,15 +2121,17 @@ export default function TakeoffCanvas() {
       if (!lead) return;
       lead.pageObj.getTextContent().then((tc) => {
         if (stale()) return;
-        const lbl = extractSheetNumber(tc, lead.viewport);
+        const { number: lbl, title } = extractSheetInfo(tc, lead.viewport);
         if (lbl) setPageLabels((m) => (m[lead.pageNum] === lbl ? m : { ...m, [lead.pageNum]: lbl }));
+        if (title) setPageTitles((m) => (m[lead.pageNum] === title ? m : { ...m, [lead.pageNum]: title }));
       }).catch(() => {});
       if (labeledFileRef.current !== active) {
         labeledFileRef.current = active;
         setPageLabels((m) => (m[lead.pageNum] ? { [lead.pageNum]: m[lead.pageNum] } : {})); // drop other file's labels
+        setPageTitles((m) => (m[lead.pageNum] ? { [lead.pageNum]: m[lead.pageNum] } : {}));
         (async () => {
           const pdf = await docFor(active);
-          const found = {};
+          const found = {}, foundTitles = {};
           for (let n = 1; n <= (pdf.numPages || 1); n++) {
             if (stale()) return;
             if (n === lead.pageNum) continue;
@@ -2126,8 +2139,9 @@ export default function TakeoffCanvas() {
               const p2 = await pdf.getPage(n);
               const tc = await p2.getTextContent();
               const vp2 = p2.getViewport({ scale: RENDER_SCALE });
-              const lbl = extractSheetNumber(tc, vp2);
-              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0) setPageLabels((m) => ({ ...found, ...m })); }
+              const { number: lbl, title } = extractSheetInfo(tc, vp2);
+              if (title) foundTitles[n] = title;
+              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0) { setPageLabels((m) => ({ ...found, ...m })); setPageTitles((m) => ({ ...foundTitles, ...m })); } }
               const det = detectScale(tc, vp2);
               if (det) {
                 const key = n > 1 ? `${active}#${n}` : active;
@@ -2136,6 +2150,7 @@ export default function TakeoffCanvas() {
             } catch { /* skip */ }
           }
           if (!stale() && Object.keys(found).length) setPageLabels((m) => ({ ...found, ...m }));
+          if (!stale() && Object.keys(foundTitles).length) setPageTitles((m) => ({ ...foundTitles, ...m }));
         })();
       }
     })().catch((e) => { if (stale() || e?.name === "RenderingCancelledException") return; setErr(String(e.message || e)); setStatus("error"); });
@@ -2428,7 +2443,7 @@ export default function TakeoffCanvas() {
     for (const n of names) { try { await store.removePdf(n); } catch { /* already gone */ } evictDoc(n); }
     forgetPages(names);
     releaseThumbs(thumbCacheRef.current);
-    setGalleryLabels({});
+    setGalleryLabels({}); setGalleryTitles({});
     setDetectedScales({});
     reconcileAfterRemoval("", await refreshSheets());
     restoreSavedPayload(emptyAnnotations());
@@ -7978,11 +7993,11 @@ export default function TakeoffCanvas() {
   const soloStitch = sheetGroup.length === 1 && isStitchKey(sheetGroup[0]) ? stitchById[sheetGroup[0]] : null;
   const sheetChipLabel = sheetGroup.length
     ? (soloStitch ? `Stitched — ${soloStitch.name}` : `${sheetGroup.length} sheets side-by-side`)
-    : `${levelOfPage(page) ? `${levelOfPage(page)} · ` : ""}${pageLabels[page] || (pageCount > 1 ? `Sheet ${page}` : active)}${pageCount > 1 ? ` · ${page}/${pageCount}` : ""}`;
+    : `${levelOfPage(page) ? `${levelOfPage(page)} · ` : ""}${sheetDisplayName(pageLabels[page], pageTitles[page]) || (pageCount > 1 ? `Sheet ${page}` : active)}${pageCount > 1 ? ` · ${page}/${pageCount}` : ""}`;
   const sheetMenuItems = [];
   if (!sheetGroup.length && pageCount > 1) {
     sheetMenuItems.push({ section: "Sheets in this set" });
-    for (let n = 1; n <= pageCount; n++) sheetMenuItems.push({ id: `pg-${n}`, label: `${levelOfPage(n) ? `${levelOfPage(n)} · ` : ""}${pageLabels[n] || `Sheet ${n}`}`, shortcut: `${n}/${pageCount}`, active: n === page, onSelect: () => setPage(n) });
+    for (let n = 1; n <= pageCount; n++) sheetMenuItems.push({ id: `pg-${n}`, label: `${levelOfPage(n) ? `${levelOfPage(n)} · ` : ""}${sheetDisplayName(pageLabels[n], pageTitles[n]) || `Sheet ${n}`}`, shortcut: `${n}/${pageCount}`, active: n === page, onSelect: () => setPage(n) });
   }
   if (!sheetGroup.length && sheets.length > 1) {
     sheetMenuItems.push({ section: "Files" });
@@ -8212,7 +8227,7 @@ export default function TakeoffCanvas() {
             <ToolMenu
               title="Sheet — the sheets in this set, files, grouping, and the gallery"
               onOpenChange={onMenuDepth}
-              face={<span style={{ display: "inline-block", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sheetChipLabel}</span>}
+              face={<span title={sheetChipLabel} style={{ display: "inline-block", maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sheetChipLabel}</span>}
               faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 400, padding: "6px 8px" }}
               menuStyle={{ minWidth: 260, maxHeight: "min(480px, 60vh)", overflowY: "auto" }}
               items={sheetMenuItems}
@@ -8472,8 +8487,8 @@ export default function TakeoffCanvas() {
             const on = sheetGroup.length ? inGroup : k === sheetKey;
             const lbl = tabLabel(k);
             return (
-              <span key={k} data-sheet-tab={on ? "active" : "idle"} style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
-                <button onClick={() => goToSheet(k)} title={k} style={{ border: "none", background: "none", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 11.5, color: "var(--ink)", fontFamily: "var(--f-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140, padding: 0 }}>{lbl}</button>
+              <span key={k} data-sheet-tab={on ? "active" : "idle"} style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 300 }}>
+                <button onClick={() => goToSheet(k)} title={lbl} style={{ border: "none", background: "none", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 11.5, color: "var(--ink)", fontFamily: "var(--f-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 250, padding: 0 }}>{lbl}</button>
                 <button onClick={() => toggleInGroup(k)} title={inGroup ? "Remove from side-by-side" : "Side-by-side with the current sheet"} style={{ border: "none", background: "none", cursor: "pointer", color: inGroup ? "var(--cobalt)" : "var(--ink-faint)", padding: 0, display: "inline-flex" }}><Icon name="sideBySide" size={11} /></button>
                 <button onClick={() => closeTab(k)} title="Close tab" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0, display: "inline-flex" }}><Icon name="close" size={10} /></button>
               </span>
@@ -10298,8 +10313,11 @@ export default function TakeoffCanvas() {
           initialMode={view === "picker" ? "browse" : "plan"}
           cloudMode={cloudMode}
           sheets={sheets} getDoc={docFor} scales={scales} detectedScales={detectedScales} scaleUnconfirmed={scaleUnconfirmed}
-          shapes={shapes} labels={galleryLabels}
-          onLabel={(k, lbl) => setGalleryLabels((m) => (m[k] === lbl ? m : { ...m, [k]: lbl }))}
+          shapes={shapes} labels={galleryLabels} titles={galleryTitles}
+          onLabel={(k, lbl, title) => {
+            if (lbl) setGalleryLabels((m) => (m[k] === lbl ? m : { ...m, [k]: lbl }));
+            if (title) setGalleryTitles((m) => (m[k] === title ? m : { ...m, [k]: title }));
+          }}
           onDetect={(k, det) => setDetectedScales((d) => (d[k]?.label === det.label ? d : { ...d, [k]: det }))}
           thumbCacheRef={thumbCacheRef} busyRef={statusRef}
           openTabs={openTabs} onOpen={openSheets}

@@ -52,3 +52,54 @@ test("no sheet-number-shaped text → null", () => {
   const tc = { items: [item("SECOND FLOOR", 900, 760, 20)] };
   assert.equal(extractSheetNumber(tc, VP), null);
 });
+
+// ── sheet titles: every sheet is named "number - title" ─────────────────────
+import { extractSheetInfo, sheetDisplayName } from "../src/lib/sheets.ts";
+
+test("title under a SHEET TITLE / DRAWING TITLE caption", () => {
+  const tc = { items: [
+    item("Drawing Title", 700, 690, 10, 60),
+    item("FIRST FLOOR POWER PLAN", 700, 705, 10, 140),
+    item("Drawing Number", 860, 690, 10, 70),
+    item("E101", 860, 740, 30, 60),
+    item("Issue Date", 700, 760, 10, 50),
+  ] };
+  assert.deepEqual(extractSheetInfo(tc, VP), { number: "E101", title: "FIRST FLOOR POWER PLAN" });
+});
+
+test("title after the caption on one line, and a title that wraps onto a second line", () => {
+  const inline = { items: [item("SHEET TITLE: PANEL SCHEDULES", 640, 700, 10, 170), item("E601", 900, 760, 30, 60)] };
+  assert.equal(extractSheetInfo(inline, VP).title, "PANEL SCHEDULES");
+  const wrapped = { items: [
+    item("SHEET TITLE", 640, 660, 8, 50),
+    item("LEVEL 2", 640, 680, 12, 50),
+    item("LIGHTING PLAN - AREA B", 640, 694, 12, 140),
+    item("SCALE: 1/8\" = 1'-0\"", 640, 730, 8, 90),
+    item("E202", 900, 760, 30, 60),
+  ] };
+  assert.equal(extractSheetInfo(wrapped, VP).title, "LEVEL 2 LIGHTING PLAN - AREA B");
+});
+
+test("unlabeled title (Revit-style): the sheet-word line nearest the number; the firm's address is not a title", () => {
+  const tc = { items: [
+    item("ACME ENGINEERING INC.", 860, 600, 9, 120),
+    item("1200 MAIN STREET SUITE 400", 860, 612, 9, 150),
+    item("ELECTRICAL", 840, 700, 14, 90),
+    item("FIRE ALARM PLAN", 840, 716, 14, 120),
+    item("E401", 880, 760, 30, 60),
+  ] };
+  assert.deepEqual(extractSheetInfo(tc, VP), { number: "E401", title: "ELECTRICAL FIRE ALARM PLAN" });
+});
+
+test("no readable title is withheld, not guessed: the number stands alone", () => {
+  const tc = { items: [
+    item("ACME ENGINEERING INC.", 860, 600, 9, 120),
+    item("PROJECT NO. 24-118", 700, 700, 9, 90),
+    item("DATE 03/06/2026", 700, 712, 9, 80),
+    item("E101", 880, 760, 30, 60),
+  ] };
+  assert.deepEqual(extractSheetInfo(tc, VP), { number: "E101", title: null });
+  assert.equal(sheetDisplayName("E101", null), "E101");
+  assert.equal(sheetDisplayName("E101", "FIRST FLOOR POWER PLAN"), "E101 - FIRST FLOOR POWER PLAN");
+  assert.equal(sheetDisplayName(null, null), "");
+});

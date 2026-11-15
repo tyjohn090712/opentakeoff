@@ -59,7 +59,7 @@ export async function loadThumb(sheetKey, minW = thumbPixelWidth()) {
 
 /** Best-effort persist; a quota failure only costs the next open a re-render. */
 export function saveThumb(sheetKey, rec) {
-  return metaPut(keyOf(sheetKey), { w: rec.w, h: rec.h, blob: rec.blob, label: rec.label ?? null, det: rec.det ?? null, ts: Date.now() }).catch(() => {});
+  return metaPut(keyOf(sheetKey), { w: rec.w, h: rec.h, blob: rec.blob, label: rec.label ?? null, title: rec.title ?? null, det: rec.det ?? null, ts: Date.now() }).catch(() => {});
 }
 
 /** Drop every thumb for these FILE names — persisted AND the live object

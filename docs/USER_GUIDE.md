@@ -93,7 +93,9 @@ Nothing uploads anywhere. The file is read locally, rendered locally, and stored
 
 ### The sheet gallery (`G`)
 
-Press `G` (or click **Sheets** in the toolbar) for the visual gallery: one card per sheet, with its title-block sheet number, a thumbnail, and status badges—a level chip, **open** if it's already a tab, a shape count, and a scale status (**scale ✓** green, **plan: 1/4″ = 1′-0″** amber when a scale note was detected but not yet adopted, **no scale** red).
+**Sheets are named the way the drawings name them: sheet number - sheet title**—*E101 - FIRST FLOOR POWER PLAN*—on the gallery cards, the tabs, the page picker, and the report, all read from the title block. The title comes from under a *Sheet Title* or *Drawing Title* caption, or, where the title block has no caption, from the drawing-name line nearest the sheet number. When neither turns up a title, the sheet shows its number alone rather than a guess; a sheet with no text layer (a scan) shows its file name.
+
+Press `G` (or click **Sheets** in the toolbar) for the visual gallery: one card per sheet, with its sheet name, a thumbnail, and status badges—a level chip, **open** if it's already a tab, a shape count, and a scale status (**scale ✓** green, **plan: 1/4″ = 1′-0″** amber when a scale note was detected but not yet adopted, **no scale** red).
 
 - **Open one sheet**: point to a card and click **View**.
 - **Open several**: click cards to select them—each gets a numbered badge, and that order is the left-to-right order. Then **Open N as tabs** or **Open N side-by-side** (side-by-side maxes at **4 sheets**; one pan/zoom moves the whole row).

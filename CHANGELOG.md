@@ -12,6 +12,8 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 - **The item list.** A column beside the tool rail lists the takeoff's items by group, each with its description, running total and `1`–`9` key. Click to take off; ✎ or double-click edits it in the Takeoffs drawer; the pin assigns a hotkey; a filter box and folding groups keep a long list short. **‹** hides it (the rail's **Items** button brings it back). `web/src/components/ItemList.jsx`; grouping in `lib/chest.js` (`itemGroups`).
 
+- **Sheets are named "number - title"** (*E101 - FIRST FLOOR POWER PLAN*) on the gallery cards, tabs, page picker, and report. The title is read off the title block, under a *Sheet Title* / *Drawing Title* caption or as the drawing-name line nearest the sheet number; when none is found, the number stands alone. Gallery thumbnails cached before this read the title once more. `extractSheetInfo` and `sheetDisplayName` in `web/src/lib/sheets.ts`.
+
 ### Changed
 - **The plan gets two rows back.** With the item list showing, the band of pinned chips and the active item's editor row above the plan are gone; editing lives in the Takeoffs drawer. Hide the list and the band returns.
 - **An item arms its own tool.** Picking an item from the search, a palette chip, `1`–`9`, or the Takeoffs panel arms Count, Linear or Area to match it. A tool key that doesn't fit the active item asks for a second press instead of quietly measuring a receptacle as a run. The eight starter conditions now carry their tool, description and group.

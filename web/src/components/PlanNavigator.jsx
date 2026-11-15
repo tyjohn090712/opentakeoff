@@ -22,7 +22,7 @@ import { Link, useNavigate } from "react-router";
 import { Icon } from "../brand/icons.jsx";
 import AuthChip from "./AuthChip.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
-import { parseSheetKey, extractSheetNumber, detectScale, RENDER_SCALE, MAX_GROUP } from "../lib/sheets";
+import { parseSheetKey, extractSheetInfo, sheetDisplayName, detectScale, RENDER_SCALE, MAX_GROUP } from "../lib/sheets";
 import { isGoogleConfigured } from "../lib/google/auth.js";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { isFolderSyncSupported, loadFolderLink, linkFolder, forgetFolder, queryFolderPermission } from "../lib/fs/fsAccess.js";
@@ -58,7 +58,7 @@ export default function PlanNavigator({
   // presentation + exit
   canClose, onExit, initialMode = "plan", cloudMode,
   // plan-set (gallery) data
-  sheets, getDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, onLabel, onDetect,
+  sheets, getDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, titles = {}, onLabel, onDetect,
   thumbCacheRef, busyRef, openTabs, onOpen,
   onAddFiles, onClosePdf, onRemoveFromProject,
   // manage mode (#301/#302): bulk close + workspace reset, and the persisted
@@ -316,6 +316,18 @@ export default function PlanNavigator({
     const want = thumbPixelWidth();
     let rec = await loadThumb(key, want);
     if (seq !== seqRef.current) return;
+    // a thumb cached before sheet titles were read has no `title` key: read
+    // the title block once more so the card says "E101 - POWER PLAN"
+    if (rec && !("title" in rec)) {
+      try {
+        const { file, page } = parseSheetKey(key);
+        const pg = await (await getDoc(file)).getPage(page);
+        const info = extractSheetInfo(await pg.getTextContent(), pg.getViewport({ scale: RENDER_SCALE }));
+        rec = { ...rec, label: rec.label || info.number || null, title: info.title || null };
+        saveThumb(key, rec);
+      } catch { /* text layer is optional */ }
+      if (seq !== seqRef.current) return;
+    }
     if (!rec) {
       const { file, page } = parseSheetKey(key);
       const pdf = await getDoc(file);
@@ -327,7 +339,9 @@ export default function PlanNavigator({
         try {
           const tc = await pg.getTextContent();
           const vpL = pg.getViewport({ scale: RENDER_SCALE });
-          rec.label = extractSheetNumber(tc, vpL) || null;
+          const info = extractSheetInfo(tc, vpL);
+          rec.label = info.number || null;
+          rec.title = info.title || null;
           rec.det = detectScale(tc, vpL) || null;
         } catch { /* text layer is optional */ }
       }
@@ -335,7 +349,7 @@ export default function PlanNavigator({
     }
     if (thumbCacheRef.current.has(key)) return;
     thumbCacheRef.current.set(key, URL.createObjectURL(rec.blob));
-    if (rec.label && !labels[key]) onLabel(key, rec.label);
+    if ((rec.label && !labels[key]) || (rec.title && !titles[key])) onLabel(key, rec.label || labels[key] || null, rec.title || null);
     if (rec.det && !detectedScales[key]) onDetect(key, rec.det);
     scheduleBump();
   };
@@ -413,7 +427,7 @@ export default function PlanNavigator({
   const shapeCount = (key) => shapeTally.bySheet.get(key) || 0;
   const pdfShapeCount = (file) => shapeTally.byFile.get(file) || 0;
   const labelOf = (key) => {
-    if (labels[key]) return labels[key];
+    if (labels[key] || titles[key]) return sheetDisplayName(labels[key], titles[key]);   // "E101 - FIRST FLOOR POWER PLAN"
     const t = parseSheetKey(key);
     const base = t.file.replace(/\.pdf$/i, "");
     return t.page > 1 ? `${base} · ${t.page}` : base;
@@ -680,7 +694,7 @@ export default function PlanNavigator({
                     : <div className="skeleton" style={{ width: "86%", height: "78%" }} />}
                 </div>
                 <div style={{ padding: "8px 10px", display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <strong style={{ fontFamily: "var(--f-mono)", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }} title={key}>{labelOf(key)}</strong>
+                  <strong style={{ fontFamily: "var(--f-mono)", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }} title={`${labelOf(key)} — ${key}`}>{labelOf(key)}</strong>
                   {levels[key] && <span title="Level" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", padding: "1px 5px" }}>{levels[key]}</span>}
                   {isOpenTab && <span title="Already open as a tab" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>open</span>}
                   {cnt > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)" }}>{cnt}▦</span>}
