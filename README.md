@@ -295,7 +295,8 @@ Plus the full manual kit—**Area, Rectangle, Linear, Curved Line, Surface Area 
 Count**, and **Cut Out** deducts—and a **Zone check** that answers "what's in this wing?"
 without touching the takeoff.
 
-Tap **Space** to find an item by tag, description or Est. code; picking it arms its own
+The **item list** beside the tool rail shows every item with its running total; click one,
+or tap **Space** to find any item by tag, description or Est. code. Picking it arms its own
 tool, so the next click counts or traces it. A Linear run works the way LiveCount's do:
 every click is a **counted point**, `⇧`-click is an uncounted bend, `G` starts a
 disconnected segment, and a `Space` tap mid-run adds an **adder** (a drop, a makeup) at

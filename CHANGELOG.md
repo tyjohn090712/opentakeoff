@@ -2,7 +2,7 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
-## 2026-11-14 — pick the item, not the tool; runs with counted points, adders and jumps (electrical fork)
+## 2026-11-15 — an item list, pick the item not the tool, and runs with counted points, adders and jumps (electrical fork)
 
 ### Added
 - **Find an item with a tap of `Space`** (or `/`, or **Find item** in the band under the toolbar). A search box over the plan finds items by tag, description, group or Est. code: the takeoff's own first, with their running quantity, then chest items it doesn't have yet (picking one adds it). `web/src/components/QuickPick.jsx`; ranking in `lib/chest.js` (`quickPickResults`). Holding `Space` and dragging still pans.
@@ -10,7 +10,10 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 - **Disconnected points.** `G` mid-run: the next click starts a new segment, and the jump isn't measured. The segments commit together as one run and one undo step.
 - **Adders.** A `Space` tap mid-run adds extra length at the last point (a drop, a makeup), tagged **+10′** on the plan. The length is set per item in the readout card (**Space adds _10_ ft**). Adders count in the run's LF everywhere: the Report, the buy list, the exports, and the marked set. Logic in `web/src/lib/runPoints.js`; marks drawn by `components/RunMarks.jsx`.
 
+- **The item list.** A column beside the tool rail lists the takeoff's items by group, each with its description, running total and `1`–`9` key. Click to take off; ✎ or double-click edits it in the Takeoffs drawer; the pin assigns a hotkey; a filter box and folding groups keep a long list short. **‹** hides it (the rail's **Items** button brings it back). `web/src/components/ItemList.jsx`; grouping in `lib/chest.js` (`itemGroups`).
+
 ### Changed
+- **The plan gets two rows back.** With the item list showing, the band of pinned chips and the active item's editor row above the plan are gone; editing lives in the Takeoffs drawer. Hide the list and the band returns.
 - **An item arms its own tool.** Picking an item from the search, a palette chip, `1`–`9`, or the Takeoffs panel arms Count, Linear or Area to match it. A tool key that doesn't fit the active item asks for a second press instead of quietly measuring a receptacle as a run. The eight starter conditions now carry their tool, description and group.
 - **`⇧` on a Linear run** marks an uncounted point instead of forcing the 45° lock (the lock still works on every other tool).
 - **`⌫` mid-run** takes back a pending `G` first, then the newest adder on the last point, then the point.

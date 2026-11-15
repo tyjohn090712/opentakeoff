@@ -224,7 +224,7 @@ A **condition** is one finish—`LVT-1`, `CPT-2`, `RB-1`—and it's what every m
 - **Finish tag**—rename in place.
 - **× multiplier**—measure one identical unit, count it N times. Shows as ×N everywhere.
 - **Waste %**—the allowance the Report adds on top of the measured quantity. Per condition, matched to the install: ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone.
-- **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**. In the top-bar band, **Line** and **Fill** are two swatch buttons that each open their own palette (one at a time; Esc or a click outside closes)—the swatch shows the current color, so the band reads at a glance. The docked panel keeps both palettes inline.—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
+- **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**. In the band under the toolbar (shown when the item list is hidden, §4), **Line** and **Fill** are two swatch buttons that each open their own palette (one at a time; Esc or a click outside closes)—the swatch shows the current color, so the band reads at a glance. The docked panel keeps both palettes inline.—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
 - **Line style**—the outline dash for this finish's floor and linear takeoffs, on canvas and in the Marked Set.
 - **H** (height, ft)—the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Existing walls keep the height they were drawn at—select a wall to change only that one (§5).
 - **T** (thickness, in)—a Linear run with thickness also computes border/feature-strip SF = LF × T⁄12. Changing it re-flows existing runs.
@@ -244,9 +244,20 @@ The **Chest** tab holds the items you reach for on every bid—a device type, a 
 - **★ starts new projects.** A starred item is added to every new project; ☆ items stay in the chest until you apply them. With nothing starred, a new project starts on the built-in defaults (`REC-20`, `REC-GFCI`, `SW-1P`, `SW-3W`, `DATA-1`, `LT-2X4`, `LT-STRIP`, `PNL`). A library saved before the chest existed keeps seeding as it always did.
 - **Raceway runs keep themselves.** **+ raceway** can file each run it builds under *Raceway* (**Keep in the tool chest**, on by default), so the next job picks `3/4 EMT 3-#10 CONC` from the chest instead of rebuilding it—and it arms the Linear tool either way.
 
+### The item list
+
+The column beside the tool rail lists every item in the takeoff, grouped the way the chest is (Receptacles, Switches, Lighting, Fire alarm, … and **Runs** for raceway without a group). Each line shows the item's swatch, tag, description, running total (`2 EA`, `140 LF · 6 pt`), and its `1`–`9` key.
+
+- **Click an item to take it off.** It becomes the active item and arms its tool.
+- **✎ or double-click** opens the item's editor—colors, hatch, waste, materials, Est. code—in the Takeoffs drawer on the right.
+- **The pin** puts the item on a `1`–`9` key (cobalt badge = pinned).
+- **Filter this takeoff…** narrows the list by any word in the tag, description, group, materials or Est. code. Click a group heading to fold it.
+- **+ chest** opens the item search, **+ raceway** the raceway builder, **+ blank** a new empty item.
+- **‹** hides the list and brings back the band under the toolbar (pinned chips and the active item's colors); the rail's **Items** button shows the list again. It's hidden on a phone-width window and in focus mode.
+
 ### Find an item—tap `Space`
 
-Tap `Space` anywhere on the plan (or press `/`, or click **Find item** in the band under the toolbar) and a search box opens. Type part of a tag, a description, a group, or an Est. code—`gfci`, `strobe`, `3/4 emt`, `26 27`—then `↑`/`↓` and `⏎`. The takeoff's own items list first, each with its running quantity; chest items the takeoff doesn't have yet follow, and picking one adds it. `Esc` closes.
+Tap `Space` anywhere on the plan (or press `/`, or click **Space** at the top of the item list) and a search box opens. Type part of a tag, a description, a group, or an Est. code—`gfci`, `strobe`, `3/4 emt`, `26 27`—then `↑`/`↓` and `⏎`. The takeoff's own items list first, each with its running quantity; chest items the takeoff doesn't have yet follow, and picking one adds it. `Esc` closes.
 
 **An item arms its own tool.** Picking a count item arms Count, a run arms Linear, an area arms Area—from the search, a palette chip, a digit, or the Takeoffs panel. The item knows its tool from the chest, or from what it has already been measured with. Pressing a tool key that doesn't fit the active item (`L` on a receptacle) doesn't switch: the status bar reads *"REC-20 is a count item. Press L again to use the linear tool anyway, or tap Space to pick another item."* A second press within four seconds goes ahead.
 
@@ -254,7 +265,7 @@ Holding `Space` and dragging still pans; only a quick tap opens the search. Mid-
 
 ### The quick-access palette and `1`–`9`
 
-The band under the toolbar is your working set: **pin** a condition there (the pushpin on its panel row) or **drag** a row onto the band. Palette chips wear cobalt number badges—**that number is the hotkey**: `1`–`9` arm palette conditions in palette order (drag chips to reorder; the numbers follow). Up to 9 pin, mapping 1:1 onto the digits; with nothing pinned, the digits fall back to list order. Single-click a chip to arm it; double-click to open its row in the panel. A digit press only ever arms—it never reassigns a selected shape (§7).
+Pin an item with the pushpin on its line in the item list. With the list hidden, the band under the toolbar shows the pinned items as chips: **pin** a condition there (the pushpin on its panel row) or **drag** a row onto the band. Palette chips wear cobalt number badges—**that number is the hotkey**: `1`–`9` arm palette conditions in palette order (drag chips to reorder; the numbers follow). Up to 9 pin, mapping 1:1 onto the digits; with nothing pinned, the digits fall back to list order. Single-click a chip to arm it; double-click to open its row in the panel. A digit press only ever arms—it never reassigns a selected shape (§7).
 
 ### The Takeoffs panel
 

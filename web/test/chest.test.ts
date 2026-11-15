@@ -291,3 +291,22 @@ test("an item arms its own tool: its measure, else what it has been measured wit
   for (const d of ELECTRICAL_DEFAULTS) assert.ok(measureTool(d), `${d.finish_tag} has a measure`);
   assert.deepEqual(sanitizeTemplates([t("X", { adder_ft: -3 }), t("Y", { adder_ft: 8 })]).map((x) => x.adder_ft), [undefined, 8]);
 });
+
+import { itemGroups } from "../src/lib/chest.js";
+
+test("item list: groups in chest order, runs without a group under Runs, takeoff order kept, filter by any word", () => {
+  const conds = [
+    { id: "1", finish_tag: "SW-3W", category: "Switches", materials: [] },
+    { id: "2", finish_tag: "REC-20", category: "Receptacles", desc: "Duplex receptacle", materials: [] },
+    { id: "3", finish_tag: "3/4 EMT 3-#12 CONC", measure: "linear", materials: [] },
+    { id: "4", finish_tag: "SW-1P", category: "Switches", materials: [], attrs: { c: "26 27 26.10" } },
+    { id: "5", finish_tag: "MISC", materials: [] },
+  ];
+  const m = (c: { measure?: string }) => c.measure || null;
+  const g = itemGroups(conds, "", m);
+  assert.deepEqual(g.map((x) => x.name), ["Receptacles", "Switches", "Runs", OTHER]);
+  assert.deepEqual(g[1].items.map((c) => c.id), ["1", "4"]);   // the takeoff's own order, not alphabetical
+  assert.deepEqual(itemGroups(conds, "26.10", m).flatMap((x) => x.items.map((c) => c.id)), ["4"]);
+  assert.deepEqual(itemGroups(conds, "duplex", m).flatMap((x) => x.items.map((c) => c.id)), ["2"]);
+  assert.deepEqual(itemGroups([], "", m), []);
+});

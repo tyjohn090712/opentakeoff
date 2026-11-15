@@ -38,7 +38,7 @@ From the estimator, condensed; the longer version is "How this estimator works" 
 
 ## 3. What exists (and where)
 
-Waves 1–4, the raceway builder, the tool chest, and step 1 of the LiveCount-style picking work are built. Details, lessons, and open items are in ELECTRICAL_FORK.md.
+Waves 1–4, the raceway builder, the tool chest, and steps 1–2 of the LiveCount-style picking work are built. Details, lessons, and open items are in ELECTRICAL_FORK.md.
 
 | Capability | Code |
 |---|---|
@@ -47,10 +47,10 @@ Waves 1–4, the raceway builder, the tool chest, and step 1 of the LiveCount-st
 | Raceway builder (conduit and MC cable) | `raceway.ts`, `components/RacewayBuilder.jsx` |
 | Tool chest and starter devices | `chest.js`, `deviceCatalog.js`, Takeoffs panel › Chest tab (`components/TakeoffsPanel.jsx`) |
 | Material line `mult` and `waste_pct` | `totals.js` (`conditionTotals`, `coverageText`) |
-| Item search (`Space`), item arms its tool, run points / adders / `G` jumps | `components/QuickPick.jsx`, `chest.js` (`quickPickResults`, `conditionMeasure`), `runPoints.js`, `components/RunMarks.jsx` |
+| Item list (left), item search (`Space`), item arms its tool, run points / adders / `G` jumps | `components/ItemList.jsx`, `components/QuickPick.jsx`, `chest.js` (`quickPickResults`, `conditionMeasure`), `runPoints.js`, `components/RunMarks.jsx` |
 | Tests (synthetic data only) | `web/test/{panelSchedule,panelRaster,panelSchedules,raceway,chest}.test.ts` |
 
-**Not built yet** (see "Next, in order" in ELECTRICAL_FORK.md): layout steps 2 and 3 (section 2), ConEst-name matching, suggested raceway config per circuit and a homerun checklist, the per-panel "breakers: in vendor package / loose" setting, the panel and gear list by floor and area, circuit-tag matching, chest CSV import/export, the Est. code pick-list import. **Deliberately not built:** an NEC conduit-fill check (the Chapter 9 tables couldn't be verified against the code text; a quietly wrong check is worse than none).
+**Not built yet** (see "Next, in order" in ELECTRICAL_FORK.md): layout step 3 (section 2), ConEst-name matching, suggested raceway config per circuit and a homerun checklist, the per-panel "breakers: in vendor package / loose" setting, the panel and gear list by floor and area, circuit-tag matching, chest CSV import/export, the Est. code pick-list import. **Deliberately not built:** an NEC conduit-fill check (the Chapter 9 tables couldn't be verified against the code text; a quietly wrong check is worse than none).
 
 ## 4. Traps in the code (each one cost real time)
 
@@ -131,8 +131,8 @@ Selectors that took effort to find:
 | | |
 |---|---|
 | Merged to `main` | #3 Waves 2 and 3.1 · #4 panel schedule import · #5 `OCP SIZE` / no-POLES templates and two OCR fixes · #6 raceway builder (conduit and MC cable, line `mult` and `waste_pct`) · #7 tool chest, starter devices, Est. code column, this handbook |
-| On a branch, not yet a PR | Step 1 of the LiveCount-style work: `Space` item search, items arm their tool, counted / uncounted points, `G` jumps, adders (branch `ccr-e8c0892e-w7l1b4`) |
-| Tests | 1763 (3 skipped), all passing under `npm run check` |
+| Open, awaiting the estimator | #8 LiveCount-style steps 1–2: the item list, `Space` item search, items arm their tool, counted / uncounted points, `G` jumps, adders (branch `ccr-e8c0892e-w7l1b4`) |
+| Tests | 1764 (3 skipped), all passing under `npm run check` |
 | Waiting on the estimator | Whether counted points should feed a separate count item and whether `Space` while counting should do anything but search; ConEst access and item names; confirmation that "SW duplex" means switched; their own device list (candela variants, fixture types); whether conduit lengths should carry waste; whether projects must be shared between estimators |
 
 ## 9. Session start checklist

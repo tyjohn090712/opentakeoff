@@ -184,3 +184,35 @@ export function quickPickResults(conditions, templates, query = "", limit = 40) 
     || (a.kind === "project" ? a.order - b.order : tag(a).localeCompare(tag(b), undefined, { numeric: true, sensitivity: "base" })));
   return rows.slice(0, limit).map(({ r: _r, order: _o, ...x }) => x);
 }
+
+/**
+ * The left item list: the project's conditions grouped by `category` in chest
+ * order (no category → by tool: "Runs" for a linear item, "Other" otherwise),
+ * filtered like the quick pick (every word in tag, description, group, labels,
+ * or a material name). Inside a group, items keep the takeoff's own order.
+ * `measureOf(c)` supplies the tool for the fallback group.
+ * Returns [{ name, items: [condition] }].
+ * @param {any[]} conditions
+ * @param {string} [query]
+ * @param {(c: any) => (string | null)} [measureOf]
+ * @returns {{ name: string, items: any[] }[]}
+ */
+export function itemGroups(conditions, query = "", measureOf = () => null) {
+  const words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+  const groups = new Map();
+  for (const c of Array.isArray(conditions) ? conditions : []) {
+    if (!c) continue;
+    if (words.length) {
+      const labels = Object.values(isObj(c.attrs) ? c.attrs : {}).filter((v) => typeof v === "string").join(" ");
+      const h = `${haystack(c)} ${labels}`.toLowerCase();
+      if (!words.every((w) => h.includes(w))) continue;
+    }
+    const name = vis(c.category) ? c.category.trim() : measureOf(c) === "linear" ? "Runs" : OTHER;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(c);
+  }
+  const rank = (n) => { const i = CHEST_ORDER.indexOf(n); return n === OTHER ? 1e6 : n === "Runs" ? 1e3 - 1 : i < 0 ? 1e3 : i; };
+  return [...groups.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([name, items]) => ({ name, items }));
+}

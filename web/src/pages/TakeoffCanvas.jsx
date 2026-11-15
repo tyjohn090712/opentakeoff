@@ -37,7 +37,7 @@ import PlanNavigator from "../components/PlanNavigator.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
 import RevisionsPanel from "../components/RevisionsPanel.jsx";
 import UserGuide from "../components/UserGuide.jsx";
-import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
+import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
@@ -155,6 +155,7 @@ import { templateFromCondition, templateCategory, seedsNewProjects, measureTool,
 import { draftRunTally, dedupeDraft, splitDraftRun, buildRun, strandedMarks, runMarkPositions, adderTag, conditionAdderFt, runCountedPoints, runAdderLf } from "../lib/runPoints.js";
 import QuickPick from "../components/QuickPick.jsx";
 import RunMarks from "../components/RunMarks.jsx";
+import ItemList from "../components/ItemList.jsx";
 import { missingStarters, starterCategory } from "../lib/deviceCatalog.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
 // pool in lib/tilePool.ts, DOM/Worker orchestration glue here via one
@@ -229,7 +230,7 @@ const PANEL_PREFS_KEY = "opentakeoff_panel";
 // collapsed on first load after the change (a one-time migration, not a per-user
 // choice being honored). An explicit COLLAPSE made under the old default is
 // preserved; any later toggle re-persists normally.
-const PANEL_DEFAULTS = { w: 320, collapsed: true, strip: false, az: false, group: false };
+const PANEL_DEFAULTS = { w: 320, collapsed: true, strip: false, az: false, group: false, items: true };   // items: the left item list (components/ItemList.jsx)
 
 // Narrow-viewport switch (phones). Everything it gates is layout-only — the
 // Takeoffs panel presents as an overlay instead of docking (a 240px+ dock
@@ -743,6 +744,7 @@ export default function TakeoffCanvas() {
   // stops (teller lines, lobbies, open plans). Same gesture STACK uses.
   const [saveState, setSaveState] = useState("idle");
   const [focusMode, setFocusModeState] = useState(getFocusMode);   // chrome-collapse (F) — lib/focusMode.js is the store+broadcast
+  const itemListOn = view === "canvas" && !focusMode && !isNarrow && panelPrefs.items !== false;
   useEffect(() => onFocusModeChange(setFocusModeState), []);
   const [loadError, setLoadError] = useState("");   // annotations load failed — autosave stays disarmed
   // internal state is { text }, minted FRESH on every setCommitMsg call — a
@@ -7477,6 +7479,17 @@ export default function TakeoffCanvas() {
   // exist only in the Report/exports). Same conditionTotals rules, no filter.
   const projRows = useMemo(() => conditionTotals(conditions, shapes, seamCtx), [conditions, shapes, seamCtx]);
   const projRowById = useMemo(() => new Map(projRows.map((r) => [r.id, r])), [projRows]);
+  // the item list and the Space search: an item's tool and its running total
+  const measureOfItem = useCallback((c) => conditionMeasure(c, shapes), [shapes]);
+  const itemQty = (c) => {
+    const r = projRowById.get(c.id);
+    if (!r || !r.shape_count) return "";
+    const m = measureOfItem(c);
+    const n = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (m === "linear") return `${n(lenVal(r.lf, units))} ${lenUnit(units)}${r.ea ? ` · ${r.ea} pt` : ""}`;
+    if (m === "area") return `${n(areaVal(r.total_sf, units))} ${areaUnit(units)}`;
+    return `${r.ea} EA`;
+  };
   // ── load-time quantity heal (#137) ─────────────────────────────────────────
   // A shape can ARRIVE without the numbers its role requires (an import that
   // carried geometry only). Such a shape draws fine but reads as 0 SF in
@@ -8392,7 +8405,7 @@ export default function TakeoffCanvas() {
           — the same one the docked panel row renders — so line/fill/hatch/height
           are editable without opening the sidebar. Shown once there's a
           condition to pin, so the drop zone is discoverable. */}
-      {!focusMode && conditions.length > 0 && (
+      {!focusMode && conditions.length > 0 && !itemListOn && (
         <div
           onDragOver={(e) => { if (e.dataTransfer.types.includes(CONDITION_DND_MIME)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; } }}
           onDrop={(e) => { if (!e.dataTransfer.types.includes(CONDITION_DND_MIME)) return; e.preventDefault(); e.stopPropagation(); const id = e.dataTransfer.getData(CONDITION_DND_MIME); if (id) pinToPalette(id); }}
@@ -8439,13 +8452,9 @@ export default function TakeoffCanvas() {
             <button type="button" onClick={() => setRacewayOpen(true)} title="Add a raceway run — pick type, size, conductors and mounting"
               style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>+ raceway</button>
           </div>
-          {/* the active condition's appearance editor, restored to the top bar —
-              same component the docked panel row renders (one source of truth) */}
-          {aCond && (
-            <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
-              <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} onAddColumnValue={addColumnValue} conditionColumns={conditionColumns} layout="row" units={units} />
-            </div>
-          )}
+          {/* the active item's editor used to sit here, a whole row of the top
+              bar; it lives in the Takeoffs drawer now (✎ or double-click an item
+              in the list), so the plan gets the height back */}
         </div>
       )}
 
@@ -8573,6 +8582,7 @@ export default function TakeoffCanvas() {
            beside it; survives focus mode — it IS the tool access. */}
        {view === "canvas" && (
        <nav role="toolbar" aria-label="Tools" style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+         {view === "canvas" && !itemListOn && !isNarrow && !focusMode && railTile("items", "takeoff", "Items — show the item list", null, () => setPanelPrefs((p) => ({ ...p, items: true })), { armed: false })}
          {railLabel("SEL")}
          {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
          {railLabel("MEAS")}
@@ -8628,6 +8638,22 @@ export default function TakeoffCanvas() {
          {railLabel("CAL")}
          {railTile("calibrate", "calibrate", "Calibrate — click two points of a known dimension", null)}
        </nav>
+       )}
+       {itemListOn && (
+         <ItemList
+           conditions={conditions}
+           activeId={activeCond}
+           palette={palette}
+           measureOf={measureOfItem}
+           qtyOf={itemQty}
+           onPick={(id) => activateCondition(id)}
+           onEdit={openConditionInPanel}
+           onTogglePin={(id) => (palette.includes(id) ? unpinFromPalette(id) : pinToPalette(id))}
+           onFind={() => setQuickPickOpen(true)}
+           onAdd={() => { addCondition(); setPanelPrefs((p) => (p.collapsed ? { ...p, collapsed: false } : p)); }}
+           onRaceway={() => setRacewayOpen(true)}
+           onCollapse={() => setPanelPrefs((p) => ({ ...p, items: false }))}
+         />
        )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the
            canvas (a flex sibling), mirroring the docked Takeoffs panel on the right. */}
@@ -10302,15 +10328,8 @@ export default function TakeoffCanvas() {
         <QuickPick
           conditions={conditions}
           templates={templates}
-          measureOf={(c) => conditionMeasure(c, shapes)}
-          qtyOf={(c) => {
-            const r = projRowById.get(c.id);
-            if (!r || !r.shape_count) return "";
-            const m = conditionMeasure(c, shapes);
-            if (m === "linear") return `${num(lenVal(r.lf, units), 0)} ${lenUnit(units)}${r.ea ? ` · ${r.ea} pts` : ""}`;
-            if (m === "area") return `${num(areaVal(r.total_sf, units), 0)} ${areaUnit(units)}`;
-            return `${r.ea} EA`;
-          }}
+          measureOf={measureOfItem}
+          qtyOf={itemQty}
           onPickCondition={(id) => activateCondition(id, { reassign: false })}
           onPickTemplate={applyTemplate}
           onClose={() => setQuickPickOpen(false)}
