@@ -76,6 +76,8 @@ export const TOOLS = [
   [["H"], "Highlighter"], [["K"], "Check a dimension against what the drawing says"],
   [["N"], "Dimension line — a standalone length label at the sheet's scale (markup, never counted)"],
   [["V"], "Select"], [["G"], "Sheet gallery"],
+  [["Y"], "Symbol — autocount: box one symbol, count every copy"],
+  [["B"], "Breakout area — trace and name a region that splits counts"],
   [["tap", "Space"], "Find an item — picking it arms its tool (/ does the same)"],
   [["1", "–", "9"], "Arm condition N (and its tool)"],
   [["hold", "M"], "Push-to-talk dictation — release runs it, Esc discards"],

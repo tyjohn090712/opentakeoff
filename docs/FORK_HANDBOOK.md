@@ -35,6 +35,7 @@ From the estimator, condensed; the longer version is "How this estimator works" 
 - **Tool chest, not an item/assembly database.** The estimating system owns labor, prices and assemblies. The seam is the **Est. code** column; when ConEst's item list can be exported, import it as a read-only pick list.
 - **LiveCount is the model for picking and tracing** (2026-11-14). Pick the item and its tool comes with it. On a run: every click is a counted point, `⇧`-click uncounted, `G` a disconnected point, a `Space` tap an adder of the item's length; with no run in progress `Space` opens the item search. Layout plan agreed: (1) this, (2) an always-open item list on the left with editing in a drawer, (3) one top row, a status bar with snap toggles, a labeled right drawer, flooring tools hidden (not deleted).
 - **Sheets are always named "sheet number - sheet title"** (2026-11-15), read from the title block (`extractSheetInfo`, `sheetDisplayName` in `sheets.ts`). No title found → the number alone, never a guess. The bare number stays the key for deep links and image names (`sheetBaseLabel`).
+- **Autocount is a step in the estimate, legend-driven** (2026-11-15, the goal): pick a discipline (electrical first, then fire alarm, telecom…), read the project's symbol legend, and count every legend symbol across that discipline's sheets. Built so far: the per-symbol pass — options window (turned / mirrored copies, threshold default 75%, scope this sheet / all pages × one total / by breakout area), click-to-toggle review, all-pages search, and breakout areas (named regions → shape labels). Autocount is gated: breakout areas drawn, or "no breakout areas" ticked.
 - **Device depth matters:** `20A duplex`, `20A switched duplex`, `wall-mount speaker/strobe` and so on, each its own item. The starter catalog is mine, from common practice; the estimator will correct it.
 
 ## 3. What exists (and where)
@@ -48,6 +49,7 @@ Waves 1–4, the raceway builder, the tool chest, and steps 1–2 of the LiveCou
 | Raceway builder (conduit and MC cable) | `raceway.ts`, `components/RacewayBuilder.jsx` |
 | Tool chest and starter devices | `chest.js`, `deviceCatalog.js`, Takeoffs panel › Chest tab (`components/TakeoffsPanel.jsx`) |
 | Material line `mult` and `waste_pct` | `totals.js` (`conditionTotals`, `coverageText`) |
+| Autocount options, all-pages search, breakout areas | `components/SymbolOptions.jsx`, `breakouts.js`, `sweepReview.js`, `symbolsweep.ts` (`fingerprintSymbol`, `matchSymbol`) |
 | Item list (left), item search (`Space`), item arms its tool, run points / adders / `G` jumps | `components/ItemList.jsx`, `components/QuickPick.jsx`, `chest.js` (`quickPickResults`, `conditionMeasure`), `runPoints.js`, `components/RunMarks.jsx` |
 | Tests (synthetic data only) | `web/test/{panelSchedule,panelRaster,panelSchedules,raceway,chest}.test.ts` |
 
@@ -68,6 +70,7 @@ Waves 1–4, the raceway builder, the tool chest, and steps 1–2 of the LiveCou
 - **Scale must be set before measuring.** Counts don't need it; lengths do.
 - **Persistence is the browser's IndexedDB:** database `opentakeoff`, store `meta`, key `annotations` is the one project; `condition_templates` is the chest. One project per browser, no sharing between estimators (an open question). Deleting `annotations` and reloading is how to get a fresh project.
 - **Sheet-title reading is tuned on the sample plan and synthetic layouts only.** Real title blocks (captioned, uncaptioned Revit, vertical strips) vary by engineer; when the estimator reports a wrong or missing title, add that layout as a test in `sheetNumber.test.ts`.
+- **At a low threshold the symbol engine accepts one symbol under two turns.** Always pass finds through `collapseFinds` (`sweepReview.js`); it took a 2-page test from 9 to 17 before it existed.
 - **OCR on ruled tables needs help** (erase the rules, read per-column strips, a single-line second look on gray, circuit numbers as a grid). Whole-region Tesseract is mostly garbage. Each new panel-schedule template can fail at the header: test real sheets from different engineers.
 - **`mcp/` dependencies aren't installed** in this checkout. For an MCP edit, syntax-check with esbuild and follow AGENTS.md's doc-sync list. The Wave 1 `mcp/src/session.ts` mirrors only `PALETTE`.
 
@@ -133,8 +136,8 @@ Selectors that took effort to find:
 | | |
 |---|---|
 | Merged to `main` | #3 Waves 2 and 3.1 · #4 panel schedule import · #5 `OCP SIZE` / no-POLES templates and two OCR fixes · #6 raceway builder (conduit and MC cable, line `mult` and `waste_pct`) · #7 tool chest, starter devices, Est. code column, this handbook |
-| Open, awaiting the estimator | #8 LiveCount-style steps 1–2 plus "number - title" sheet names: the item list, `Space` item search, items arm their tool, counted / uncounted points, `G` jumps, adders (branch `ccr-e8c0892e-w7l1b4`) |
-| Tests | 1768 (3 skipped), all passing under `npm run check` |
+| Open, awaiting the estimator | #8 LiveCount-style steps 1–2, "number - title" sheet names, autocount options + breakout areas: the item list, `Space` item search, items arm their tool, counted / uncounted points, `G` jumps, adders (branch `ccr-e8c0892e-w7l1b4`) |
+| Tests | 1772 (3 skipped), all passing under `npm run check` |
 | Waiting on the estimator | Whether counted points should feed a separate count item and whether `Space` while counting should do anything but search; ConEst access and item names; confirmation that "SW duplex" means switched; their own device list (candela variants, fixture types); whether conduit lengths should carry waste; whether projects must be shared between estimators |
 
 ## 9. Session start checklist

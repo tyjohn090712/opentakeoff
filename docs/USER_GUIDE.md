@@ -479,6 +479,27 @@ Trace a wall run in plan; wall SF = traced LF × the condition's **height**. The
 
 One click, one marker, one EA. Counts commit immediately on click and are the one measurement that works without a scale. A `Space` tap while counting opens the item search.
 
+### Autocount—Symbol (`Y`)
+
+Count every copy of a device symbol in one pass.
+
+1. Pick the item (tap `Space`, or click it in the item list).
+2. Press `Y` and box **one** copy of the symbol: click one corner, then the opposite corner.
+3. A window asks how to count it:
+   - **Include turned copies**—the same device on horizontal and vertical walls (90°, 180°, 270°). On by default.
+   - **Include mirrored copies**—flipped left for right. On by default.
+   - **Count a copy when it matches at least _75_ %.** The 10 points below it come back as **?** for you to answer; anything lower is left out. 75% suits real sheets, where walls, text and hatch sit behind symbols; raise it when look-alike symbols get caught.
+   - **Where to count**: *This sheet — one total*, *This sheet — by breakout area*, *All pages — one total*, or *All pages — by breakout area*.
+   - **Find all** stays off until the job has breakout areas (**Draw breakout areas**) or you tick **This job has no breakout areas**.
+4. Review. Matches show as ✕ in the item's color, near-misses as orange **?**. **Click a found item on the plan** to leave it out or put it back; click a **?** to cycle accept → dismiss → open (or ↵ accept · X dismiss · → next). The panel shows the turns it found (*0° ×3 · 90° ×2*). With **All pages**, it lists every sheet with finds and its count; click a sheet to review it on the plan.
+5. **Commit N as 〈item〉**. Everything lands in one undo step, and the status bar says how it split (*Area A 4 · Area B 3 · outside any area 2*). The Symbol tool stays armed: pick the next item and box its symbol.
+
+One symbol counts once even when it reads two ways (a receptacle that looks the same turned 0° and 180°). The Symbol tool reads drawn linework, so a scanned sheet can't be autocounted: *"This sheet has no vector linework (likely a scan)."* Count it with `C`.
+
+### Breakout areas (`B`)
+
+Breakout areas split a count by where things are: *Area A*, *Level 2 North*, *Phase 1*. Press `B` (or **Breakout areas** on the rail), trace the region, press `⏎`, and name it. Areas show as dashed violet outlines with their name. Each name joins the job's shape labels (§7), so a count committed **by breakout area** carries the name of the area it sits in, and the Report's **Group: Label** totals each area. A count outside every area has no label. Remove an area with ✕ in the Symbol window's area list.
+
 ### Cut Out — deducts (`D`, `⇧D`)
 
 The **Cut Out** menu subtracts voids: **Deduct shape** (`D`) traces a polygon, **Deduct rectangle** (`⇧D`) boxes one. A deduct belongs to the active condition and subtracts its SF from that condition's floor total—columns, shafts, casework, anything inside a traced area that doesn't get flooring. Deducts draw in dashed red and carry their negative sign into the report's shape audit.
@@ -944,6 +965,8 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `N` | Dimension line—a standalone length label at the sheet's scale (markup, never counted) |
 | `K` | Check a dimension |
 | `V` | Select |
+| `Y` | Symbol—autocount: box one symbol, count every copy |
+| `B` | Breakout area—trace and name a region that splits counts |
 | `G` | Sheet gallery (mid-run on Linear: a disconnected point—the next click starts a new segment) |
 | Tap `Space` | Find an item—picking it arms its tool (`/` does the same). Mid-run on Linear, a tap adds an adder instead |
 | Hold `M` | Push-to-talk dictation—release runs the command, `Esc` discards (see [§17](#17-voice-and-the-command-box)) |

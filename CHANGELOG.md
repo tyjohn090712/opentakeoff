@@ -14,6 +14,12 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 - **Sheets are named "number - title"** (*E101 - FIRST FLOOR POWER PLAN*) on the gallery cards, tabs, page picker, and report. The title is read off the title block, under a *Sheet Title* / *Drawing Title* caption or as the drawing-name line nearest the sheet number; when none is found, the number stands alone. Gallery thumbnails cached before this read the title once more. `extractSheetInfo` and `sheetDisplayName` in `web/src/lib/sheets.ts`.
 
+- **Autocount asks before it counts.** After you box a symbol with `Y`, a window offers turned copies (devices on horizontal and vertical walls) and mirrored copies, the match threshold (default **75%**; the 10 points below come back as **?**), and where to count: this sheet or all pages, as one total or by breakout area. During review, a click on a found item leaves it out or puts it back. With all pages, each sheet's finds are listed and reviewable. Symbol stays armed after commit for the next item. `components/SymbolOptions.jsx`.
+- **Breakout areas (`B`).** Trace a region and name it; counts committed by area carry its name as their shape label, so the Report's Group: Label totals each area. Autocount won't run until the job has breakout areas or "This job has no breakout areas" is ticked. Saved with the project (`breakout_areas`, `no_breakouts`). `web/src/lib/breakouts.js`.
+
+### Fixed
+- **Autocount counted one symbol twice at a low threshold** when it read the same way at two turns (0° and 180°). Finds at one spot now collapse to the best reading, and a **?** on an accepted find or the seed is dropped. `web/src/lib/sweepReview.js`.
+
 ### Changed
 - **The plan gets two rows back.** With the item list showing, the band of pinned chips and the active item's editor row above the plan are gone; editing lives in the Takeoffs drawer. Hide the list and the band returns.
 - **An item arms its own tool.** Picking an item from the search, a palette chip, `1`–`9`, or the Takeoffs panel arms Count, Linear or Area to match it. A tool key that doesn't fit the active item asks for a second press instead of quietly measuring a receptacle as a run. The eight starter conditions now carry their tool, description and group.
