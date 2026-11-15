@@ -19,6 +19,7 @@
 // remain stable.
 
 import { round2 } from "./num.js";
+import { runTotalLf, runCountedPoints } from "./runPoints.js";
 import { csvEsc as esc } from "./csv.js";
 import { GETTERS, CSV_PROFILE, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
@@ -47,7 +48,10 @@ function accumulateRole(acc, s) {
     case "deduct": if (!s.cuts_shape_id) acc.floor -= cp.area_sf || 0; break;
     case "floor_area": acc.floor += cp.area_sf || 0; break;
     case "surface_area": acc.wall += cp.area_sf || 0; break;
-    case "linear": acc.lf += cp.perimeter_lf || 0; acc.border += cp.area_sf || 0; break;
+    // a run's adders (Space) add length and its counted points (every click
+    // but a Shift-click) add EA — both ride the shape, never `computed`, so
+    // no recompute path can drop them (lib/runPoints.js)
+    case "linear": acc.lf += runTotalLf(s); acc.ea += runCountedPoints(s); acc.border += cp.area_sf || 0; break;
     case "count": acc.ea += cp.count || 1; break;
     default: break;
   }

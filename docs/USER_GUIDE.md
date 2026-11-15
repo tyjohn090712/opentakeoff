@@ -93,7 +93,9 @@ Nothing uploads anywhere. The file is read locally, rendered locally, and stored
 
 ### The sheet gallery (`G`)
 
-Press `G` (or click **Sheets** in the toolbar) for the visual gallery: one card per sheet, with its title-block sheet number, a thumbnail, and status badges—a level chip, **open** if it's already a tab, a shape count, and a scale status (**scale ✓** green, **plan: 1/4″ = 1′-0″** amber when a scale note was detected but not yet adopted, **no scale** red).
+**Sheets are named the way the drawings name them: sheet number - sheet title**—*E101 - FIRST FLOOR POWER PLAN*—on the gallery cards, the tabs, the page picker, and the report, all read from the title block. The title comes from under a *Sheet Title* or *Drawing Title* caption, or, where the title block has no caption, from the drawing-name line nearest the sheet number. When neither turns up a title, the sheet shows its number alone rather than a guess; a sheet with no text layer (a scan) shows its file name.
+
+Press `G` (or click **Sheets** in the toolbar) for the visual gallery: one card per sheet, with its sheet name, a thumbnail, and status badges—a level chip, **open** if it's already a tab, a shape count, and a scale status (**scale ✓** green, **plan: 1/4″ = 1′-0″** amber when a scale note was detected but not yet adopted, **no scale** red).
 
 - **Open one sheet**: point to a card and click **View**.
 - **Open several**: click cards to select them—each gets a numbered badge, and that order is the left-to-right order. Then **Open N as tabs** or **Open N side-by-side** (side-by-side maxes at **4 sheets**; one pan/zoom moves the whole row).
@@ -224,7 +226,7 @@ A **condition** is one finish—`LVT-1`, `CPT-2`, `RB-1`—and it's what every m
 - **Finish tag**—rename in place.
 - **× multiplier**—measure one identical unit, count it N times. Shows as ×N everywhere.
 - **Waste %**—the allowance the Report adds on top of the measured quantity. Per condition, matched to the install: ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone.
-- **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**. In the top-bar band, **Line** and **Fill** are two swatch buttons that each open their own palette (one at a time; Esc or a click outside closes)—the swatch shows the current color, so the band reads at a glance. The docked panel keeps both palettes inline.—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
+- **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**. In the band under the toolbar (shown when the item list is hidden, §4), **Line** and **Fill** are two swatch buttons that each open their own palette (one at a time; Esc or a click outside closes)—the swatch shows the current color, so the band reads at a glance. The docked panel keeps both palettes inline.—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
 - **Line style**—the outline dash for this finish's floor and linear takeoffs, on canvas and in the Marked Set.
 - **H** (height, ft)—the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Existing walls keep the height they were drawn at—select a wall to change only that one (§5).
 - **T** (thickness, in)—a Linear run with thickness also computes border/feature-strip SF = LF × T⁄12. Changing it re-flows existing runs.
@@ -244,9 +246,28 @@ The **Chest** tab holds the items you reach for on every bid—a device type, a 
 - **★ starts new projects.** A starred item is added to every new project; ☆ items stay in the chest until you apply them. With nothing starred, a new project starts on the built-in defaults (`REC-20`, `REC-GFCI`, `SW-1P`, `SW-3W`, `DATA-1`, `LT-2X4`, `LT-STRIP`, `PNL`). A library saved before the chest existed keeps seeding as it always did.
 - **Raceway runs keep themselves.** **+ raceway** can file each run it builds under *Raceway* (**Keep in the tool chest**, on by default), so the next job picks `3/4 EMT 3-#10 CONC` from the chest instead of rebuilding it—and it arms the Linear tool either way.
 
+### The item list
+
+The column beside the tool rail lists every item in the takeoff, grouped the way the chest is (Receptacles, Switches, Lighting, Fire alarm, … and **Runs** for raceway without a group). Each line shows the item's swatch, tag, description, running total (`2 EA`, `140 LF · 6 pt`), and its `1`–`9` key.
+
+- **Click an item to take it off.** It becomes the active item and arms its tool.
+- **✎ or double-click** opens the item's editor—colors, hatch, waste, materials, Est. code—in the Takeoffs drawer on the right.
+- **The pin** puts the item on a `1`–`9` key (cobalt badge = pinned).
+- **Filter this takeoff…** narrows the list by any word in the tag, description, group, materials or Est. code. Click a group heading to fold it.
+- **+ chest** opens the item search, **+ raceway** the raceway builder, **+ blank** a new empty item.
+- **‹** hides the list and brings back the band under the toolbar (pinned chips and the active item's colors); the rail's **Items** button shows the list again. It's hidden on a phone-width window and in focus mode.
+
+### Find an item—tap `Space`
+
+Tap `Space` anywhere on the plan (or press `/`, or click **Space** at the top of the item list) and a search box opens. Type part of a tag, a description, a group, or an Est. code—`gfci`, `strobe`, `3/4 emt`, `26 27`—then `↑`/`↓` and `⏎`. The takeoff's own items list first, each with its running quantity; chest items the takeoff doesn't have yet follow, and picking one adds it. `Esc` closes.
+
+**An item arms its own tool.** Picking a count item arms Count, a run arms Linear, an area arms Area—from the search, a palette chip, a digit, or the Takeoffs panel. The item knows its tool from the chest, or from what it has already been measured with. Pressing a tool key that doesn't fit the active item (`L` on a receptacle) doesn't switch: the status bar reads *"REC-20 is a count item. Press L again to use the linear tool anyway, or tap Space to pick another item."* A second press within four seconds goes ahead.
+
+Holding `Space` and dragging still pans; only a quick tap opens the search. Mid-run, a tap adds an adder instead (§5, Linear).
+
 ### The quick-access palette and `1`–`9`
 
-The band under the toolbar is your working set: **pin** a condition there (the pushpin on its panel row) or **drag** a row onto the band. Palette chips wear cobalt number badges—**that number is the hotkey**: `1`–`9` arm palette conditions in palette order (drag chips to reorder; the numbers follow). Up to 9 pin, mapping 1:1 onto the digits; with nothing pinned, the digits fall back to list order. Single-click a chip to arm it; double-click to open its row in the panel. A digit press only ever arms—it never reassigns a selected shape (§7).
+Pin an item with the pushpin on its line in the item list. With the list hidden, the band under the toolbar shows the pinned items as chips: **pin** a condition there (the pushpin on its panel row) or **drag** a row onto the band. Palette chips wear cobalt number badges—**that number is the hotkey**: `1`–`9` arm palette conditions in palette order (drag chips to reorder; the numbers follow). Up to 9 pin, mapping 1:1 onto the digits; with nothing pinned, the digits fall back to list order. Single-click a chip to arm it; double-click to open its row in the panel. A digit press only ever arms—it never reassigns a selected shape (§7).
 
 ### The Takeoffs panel
 
@@ -440,13 +461,44 @@ Two clicks: one corner, then the opposite corner. Between them the cursor chip r
 
 An open run, two or more points → LF. The **╱ Straight / ⌒ Curve** switch works here too (see Area, above)—a run that bends partway along commits as one line. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
 
+A run is traced the way LiveCount traces one:
+
+- **Counted points.** Every click is a counted point, drawn as a dot in the item's color. Each one adds 1 EA to the item, so the Report shows a run's LF *and* its points, and a material line with a **count** basis (connectors, boxes) is figured from them.
+- **Uncounted points.** Hold `⇧` while you click for a bend that isn't counted (a hollow ring while you trace). On a run, `⇧` no longer forces the 45° lock; the **45°** toggle still works.
+- **Disconnected points.** Press `G` mid-run and the next click starts a new segment. The jump between them isn't measured. Press `G` again to take it back. The segments finish together as one run and one undo step.
+- **Adders.** Tap `Space` mid-run to add extra length at the last point—a drop, a makeup. It reads **+10′** on the plan; tap again for another. The length is per item: **Space adds _10_ ft to 〈TAG〉** in the readout card while Linear is armed, 10 ft until you change it. An adder keeps the length it was placed with.
+- **Taking things back.** `⌫` mid-run removes the last thing you did: a pending `G`, then the newest adder on the last point, then the point.
+
+The readout card shows the run total (traced + adders), the counted points, and the segment count. Select a finished run and it reads the same, and the hover chip adds *(traced + adders)*. The adders are part of the run's LF everywhere: the Report, the buy list, the exports, and the marked set. Moving or dragging a run's points keeps its counts and adders; a deduct that cuts a run in two leaves them on the first piece.
+
 ### Surface Area (`S`)
 
 Trace a wall run in plan; wall SF = traced LF × the condition's **height**. There's no prompt mid-trace—the height comes from the condition, and the tool refuses if it has none: *"Set a height for 〈TAG〉 (H in the condition editor) — Surface Area = traced LF × height."* After commit, select the wall and the readout offers a **this wall** height override (with a ↺ reset)—full-height tile here, 4-ft wainscot there, same condition. A wall keeps the height it was drawn at even if you later change the condition's default, and an explicit override is honored outright—even `0`.
 
 ### Count (`C`)
 
-One click, one marker, one EA. Counts commit immediately on click and are the one measurement that works without a scale.
+One click, one marker, one EA. Counts commit immediately on click and are the one measurement that works without a scale. A `Space` tap while counting opens the item search.
+
+### Autocount—Symbol (`Y`)
+
+Count every copy of a device symbol in one pass.
+
+1. Pick the item (tap `Space`, or click it in the item list).
+2. Press `Y` and box **one** copy of the symbol: click one corner, then the opposite corner.
+3. A window asks how to count it:
+   - **Include turned copies**—the same device on horizontal and vertical walls (90°, 180°, 270°). On by default.
+   - **Include mirrored copies**—flipped left for right. On by default.
+   - **Count a copy when it matches at least _75_ %.** The 10 points below it come back as **?** for you to answer; anything lower is left out. 75% suits real sheets, where walls, text and hatch sit behind symbols; raise it when look-alike symbols get caught.
+   - **Where to count**: *This sheet — one total*, *This sheet — by breakout area*, *All pages — one total*, or *All pages — by breakout area*.
+   - **Find all** stays off until the job has breakout areas (**Draw breakout areas**) or you tick **This job has no breakout areas**.
+4. Review. Matches show as ✕ in the item's color, near-misses as orange **?**. **Click a found item on the plan** to leave it out or put it back; click a **?** to cycle accept → dismiss → open (or ↵ accept · X dismiss · → next). The panel shows the turns it found (*0° ×3 · 90° ×2*). With **All pages**, it lists every sheet with finds and its count; click a sheet to review it on the plan.
+5. **Commit N as 〈item〉**. Everything lands in one undo step, and the status bar says how it split (*Area A 4 · Area B 3 · outside any area 2*). The Symbol tool stays armed: pick the next item and box its symbol.
+
+One symbol counts once even when it reads two ways (a receptacle that looks the same turned 0° and 180°). The Symbol tool reads drawn linework, so a scanned sheet can't be autocounted: *"This sheet has no vector linework (likely a scan)."* Count it with `C`.
+
+### Breakout areas (`B`)
+
+Breakout areas split a count by where things are: *Area A*, *Level 2 North*, *Phase 1*. Press `B` (or **Breakout areas** on the rail), trace the region, press `⏎`, and name it. Areas show as dashed violet outlines with their name. Each name joins the job's shape labels (§7), so a count committed **by breakout area** carries the name of the area it sits in, and the Report's **Group: Label** totals each area. A count outside every area has no label. Remove an area with ✕ in the Symbol window's area list.
 
 ### Cut Out — deducts (`D`, `⇧D`)
 
@@ -496,7 +548,7 @@ refusal.
 
 ### The 45°/90° angle lock
 
-With the **45°** toggle on (it's on by default), the segment you're drawing locks to the 45° family—0°, 45°, 90°, 135° across the sheet—whenever the cursor comes within ~4° of an axis. The lock is quiet: the star swells, the preview line thickens, and the chip reads the locked angle plus the live segment length. **The click commits the exactly-on-axis point**, so walls come out dead square. Hold `⇧` to force the lock at any cursor angle; toggle **45°** off for free-angle tracing.
+With the **45°** toggle on (it's on by default), the segment you're drawing locks to the 45° family—0°, 45°, 90°, 135° across the sheet—whenever the cursor comes within ~4° of an axis. The lock is quiet: the star swells, the preview line thickens, and the chip reads the locked angle plus the live segment length. **The click commits the exactly-on-axis point**, so walls come out dead square. Hold `⇧` to force the lock at any cursor angle (not on a Linear run, where `⇧` marks an uncounted point); toggle **45°** off for free-angle tracing.
 
 ### Snap (beta)
 
@@ -913,7 +965,10 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `N` | Dimension line—a standalone length label at the sheet's scale (markup, never counted) |
 | `K` | Check a dimension |
 | `V` | Select |
-| `G` | Sheet gallery |
+| `Y` | Symbol—autocount: box one symbol, count every copy |
+| `B` | Breakout area—trace and name a region that splits counts |
+| `G` | Sheet gallery (mid-run on Linear: a disconnected point—the next click starts a new segment) |
+| Tap `Space` | Find an item—picking it arms its tool (`/` does the same). Mid-run on Linear, a tap adds an adder instead |
 | Hold `M` | Push-to-talk dictation—release runs the command, `Esc` discards (see [§17](#17-voice-and-the-command-box)) |
 | `?` | The in-app quick reference—the five-minute path and every shortcut (`Esc` closes) |
 
@@ -921,7 +976,8 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 
 | Key | Action |
 |---|---|
-| `1`–`9` | Arm condition N—palette order once you've pinned a palette, list order otherwise. Never reassigns a selected shape. |
+| `1`–`9` | Arm condition N—palette order once you've pinned a palette, list order otherwise. Never reassigns a selected shape. Arms the item's tool too. |
+| A tool key that doesn't fit the item | Asks first: press it again within 4 s to switch anyway |
 
 ### Drawing
 
@@ -934,7 +990,10 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⌘Z` | Mid-trace: pop the last point. Otherwise: **undo** |
 | `⇧⌘Z` | Redo |
 | `Esc` | Back out one level: clear the vertex pick first, then everything in progress (trace, proposal, calibration, check, selection, markup draft, armed stamp, zone) |
-| Hold `⇧` | Force the 45° angle lock at any cursor angle |
+| Hold `⇧` | Force the 45° angle lock at any cursor angle (not on a Linear run) |
+| `⇧`-click (Linear) | An uncounted point—a bend that adds no EA |
+| Tap `Space` (Linear, mid-run) | Add an adder at the last point, at the item's adder length |
+| `G` (Linear, mid-run) | Disconnected point: the next click starts a new segment |
 | `Q` | Flip the ╱ Straight / ⌒ Curve switch mid-trace (Area, Cut Out, Line, Surface) |
 | `⌥`-click (Area / Cut Out / Line / Surface) | Place the *other* kind of point for one click—a bow point in Straight mode, a corner in Curve mode |
 | `⌥`-click (One-Click) | Carve a cutout inside a selected space |

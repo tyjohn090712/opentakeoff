@@ -18,6 +18,7 @@
 
 import { conditionTotals, grandTotals, materialsSummary } from "./totals.js";
 import { parseSheetKey } from "./sheets";
+import { runTotalLf, runCountedPoints } from "./runPoints.js";
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -93,7 +94,7 @@ function perSheet(conditions, shapes) {
       case "deduct": row.floor_sf -= cp.area_sf || 0; break;
       case "floor_area": row.floor_sf += cp.area_sf || 0; break;
       case "surface_area": row.wall_sf += cp.area_sf || 0; break;
-      case "linear": row.lf += cp.perimeter_lf || 0; row.border_sf += cp.area_sf || 0; break;
+      case "linear": row.lf += runTotalLf(s); row.ea += runCountedPoints(s); row.border_sf += cp.area_sf || 0; break;
       case "count": row.ea += cp.count || 1; break;
       default: break;
     }

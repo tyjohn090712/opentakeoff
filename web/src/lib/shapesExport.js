@@ -7,6 +7,7 @@
 // LF total; only linear rows sum to it.
 
 import { csvEsc as esc } from "./csv.js";
+import { runTotalLf, runCountedPoints } from "./runPoints.js";
 
 export function shapesDetail(conditions, shapes, sheetLabel) {
   const byId = new Map(conditions.map((c) => [c.id, c]));
@@ -19,7 +20,7 @@ export function shapesDetail(conditions, shapes, sheetLabel) {
       case "deduct": area_sf = -(cp.area_sf || 0); lf = cp.perimeter_lf || 0; break;
       case "floor_area":
       case "surface_area":
-      case "linear": area_sf = cp.area_sf || 0; lf = cp.perimeter_lf || 0; break;
+      case "linear": area_sf = cp.area_sf || 0; lf = runTotalLf(s); ea = runCountedPoints(s); break;
       case "count": ea = cp.count || 1; break;
       default: break;
     }

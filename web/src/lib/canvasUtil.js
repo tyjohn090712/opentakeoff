@@ -64,6 +64,12 @@ export const instantiateTemplate = (t) => ({
   ...(t.thickness_in != null ? { thickness_in: t.thickness_in } : {}),
   ...(t.laborType != null ? { laborType: t.laborType } : {}),
   ...(t.subfloorType != null ? { subfloorType: t.subfloorType } : {}),
+  // electrical fork: the tool the item arms, what it is, its group, and the
+  // length Space adds to a run (lib/chest.js, lib/runPoints.js)
+  ...(["count", "linear", "area"].includes(t.measure) ? { measure: t.measure } : {}),
+  ...(typeof t.desc === "string" && t.desc.trim() ? { desc: t.desc } : {}),
+  ...(typeof t.category === "string" && t.category.trim() ? { category: t.category.trim() } : {}),
+  ...(Number(t.adder_ft) > 0 ? { adder_ft: Number(t.adder_ft) } : {}),
   ...(t.roll_setup ? { roll_setup: { ...t.roll_setup } } : {}),   // #136 — deep-copied like grout: a template's roll spec must never be shared by reference
   // instantiateMaterial (lib/materials.js) deep-copies the nested grout
   // geometry — a shallow spread here aliased the CT-1 seed's one grout object

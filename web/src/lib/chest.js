@@ -34,6 +34,15 @@ export const templateCategory = (t) => (vis(t?.category) ? t.category.trim() : O
 export const seedsNewProjects = (t) => t?.seed !== false;
 export const measureTool = (t) => (MEASURES.has(t?.measure) ? t.measure : null);
 
+// which measure each drawing tool takes off — the guard that stops a count
+// item from being traced as a run by a stray L
+export const TOOL_MEASURE = { count: "count", symbol: "count", linear: "linear", area: "area", rect: "area", oneclick: "area", surface: "area" };
+
+/** The tool a project condition arms when picked: its own `measure`, else what it has been measured with. */
+export function conditionMeasure(c, shapes) {
+  return measureTool(c) || (c ? inferMeasure(shapes, c.id) : null);
+}
+
 /** The templates a new project starts with: the starred (or legacy) ones, else the built-in defaults. */
 export function seedTemplates(library, defaults) {
   const starred = (Array.isArray(library) ? library : []).filter(seedsNewProjects);
@@ -133,5 +142,77 @@ export function templateFromCondition(c, columns = [], extra = {}) {
     ...(vis(extra.category) ? { category: extra.category.trim() } : {}),
     ...(typeof extra.seed === "boolean" ? { seed: extra.seed } : {}),
     ...(MEASURES.has(extra.measure) ? { measure: extra.measure } : {}),
+    ...(vis(c.desc) ? { desc: c.desc } : {}),
+    ...(Number(c.adder_ft) > 0 ? { adder_ft: Number(c.adder_ft) } : {}),
   };
+}
+
+const RANK_TAG_START = 0, RANK_TAG = 1, RANK_OTHER = 2;
+function matchRank(tag, hay, words) {
+  if (!words.length) return RANK_OTHER;
+  if (!words.every((w) => hay.includes(w))) return -1;
+  const t = String(tag || "").toLowerCase();
+  if (t.startsWith(words[0])) return RANK_TAG_START;
+  if (words.every((w) => t.includes(w))) return RANK_TAG;
+  return RANK_OTHER;
+}
+
+/**
+ * The quick-pick list (Space): the project's conditions first, then chest items
+ * the project doesn't have yet. Every query word must appear in the tag,
+ * description, group, labels or a material name; a tag that starts with the
+ * first word ranks first. Returns [{ kind: "project", c } | { kind: "chest", t, idx }].
+ */
+export function quickPickResults(conditions, templates, query = "", limit = 40) {
+  const words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+  const inProject = new Set((conditions || []).map((c) => String(c.finish_tag || "").trim().toUpperCase()));
+  const rows = [];
+  (conditions || []).forEach((c, order) => {
+    // a project condition's labels are keyed by column id; their values (an Est. code) are searchable too
+    const labels = Object.values(isObj(c.attrs) ? c.attrs : {}).filter((v) => typeof v === "string").join(" ").toLowerCase();
+    const r = matchRank(c.finish_tag, `${haystack(c)} ${labels}`, words);
+    if (r >= 0) rows.push({ kind: "project", c, r, order });
+  });
+  (Array.isArray(templates) ? templates : []).forEach((t, idx) => {
+    if (inProject.has(String(t.finish_tag || "").trim().toUpperCase())) return;
+    if (!words.length) return;   // an empty box lists the project; typing reaches the chest
+    const r = matchRank(t.finish_tag, haystack(t), words);
+    if (r >= 0) rows.push({ kind: "chest", t, idx, r, order: idx });
+  });
+  const tag = (x) => String((x.c || x.t).finish_tag || "");
+  rows.sort((a, b) => a.r - b.r || (a.kind === b.kind ? 0 : a.kind === "project" ? -1 : 1)
+    || (a.kind === "project" ? a.order - b.order : tag(a).localeCompare(tag(b), undefined, { numeric: true, sensitivity: "base" })));
+  return rows.slice(0, limit).map(({ r: _r, order: _o, ...x }) => x);
+}
+
+/**
+ * The left item list: the project's conditions grouped by `category` in chest
+ * order (no category → by tool: "Runs" for a linear item, "Other" otherwise),
+ * filtered like the quick pick (every word in tag, description, group, labels,
+ * or a material name). Inside a group, items keep the takeoff's own order.
+ * `measureOf(c)` supplies the tool for the fallback group.
+ * Returns [{ name, items: [condition] }].
+ * @param {any[]} conditions
+ * @param {string} [query]
+ * @param {(c: any) => (string | null)} [measureOf]
+ * @returns {{ name: string, items: any[] }[]}
+ */
+export function itemGroups(conditions, query = "", measureOf = () => null) {
+  const words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+  const groups = new Map();
+  for (const c of Array.isArray(conditions) ? conditions : []) {
+    if (!c) continue;
+    if (words.length) {
+      const labels = Object.values(isObj(c.attrs) ? c.attrs : {}).filter((v) => typeof v === "string").join(" ");
+      const h = `${haystack(c)} ${labels}`.toLowerCase();
+      if (!words.every((w) => h.includes(w))) continue;
+    }
+    const name = vis(c.category) ? c.category.trim() : measureOf(c) === "linear" ? "Runs" : OTHER;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(c);
+  }
+  const rank = (n) => { const i = CHEST_ORDER.indexOf(n); return n === OTHER ? 1e6 : n === "Runs" ? 1e3 - 1 : i < 0 ? 1e3 : i; };
+  return [...groups.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([name, items]) => ({ name, items }));
 }

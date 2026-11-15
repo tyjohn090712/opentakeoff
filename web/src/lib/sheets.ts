@@ -104,6 +104,20 @@ export const STANDARD_SCALES: Scale[] = [
 // the largest sheet-number-shaped token in the lower-right region of the page.
 const SHEET_NO_RE = /^[A-Z]{1,3}[-. ]?\d{1,3}(\.\d{1,2})?[A-Z]?$/;
 export function extractSheetNumber(textContent: TextContentLike, viewport: Viewport): string | null {
+  return extractSheetInfo(textContent, viewport).number;
+}
+
+// The drawing's sheet number AND its title ("E101" + "FIRST FLOOR POWER PLAN"),
+// so a sheet is always named "E101 - FIRST FLOOR POWER PLAN". The title is read
+// the two ways title blocks print it:
+//   1. under (or after) a label — SHEET TITLE, DRAWING TITLE, SHEET NAME, TITLE;
+//   2. unlabeled, as the drawing-name-shaped line nearest the sheet number —
+//      words only, at least one sheet word (PLAN, SCHEDULE, DETAILS, RISER…).
+// A title that wraps onto a second line of the same size is joined. When
+// neither way finds one the title is null and the sheet shows its number alone:
+// withheld, never guessed.
+export type SheetInfo = { number: string | null; title: string | null };
+export function extractSheetInfo(textContent: TextContentLike, viewport: Viewport): SheetInfo {
   const W = viewport.width, H = viewport.height;
 
   // CAD exports often split one drawn string into several glyph runs — "M-121A"
@@ -128,11 +142,11 @@ export function extractSheetNumber(textContent: TextContentLike, viewport: Viewp
     placed.push({ raw, x, y, h, w });
   }
 
-  let best: string | null = null, bestScore = 0;
+  let best: string | null = null, bestScore = 0, bestAt: { x: number; y: number; h: number } | null = null;
   const consider = (raw: string, x: number, y: number, h: number) => {
     if (raw.length < 2 || raw.length > 8 || !SHEET_NO_RE.test(raw)) return;
     const score = h + (x / W) * 4 + (y / H) * 4; // bigger + further to lower-right wins
-    if (score > bestScore) { bestScore = score; best = raw; }
+    if (score > bestScore) { bestScore = score; best = raw; bestAt = { x, y, h }; }
   };
 
   for (const p of placed) consider(p.raw, p.x, p.y, p.h);
@@ -161,7 +175,130 @@ export function extractSheetNumber(textContent: TextContentLike, viewport: Viewp
     }
     flush();
   }
-  return best;
+  return { number: best, title: best ? sheetTitleNear(textContent, viewport, vscale, bestAt) : null };
+}
+
+// ── sheet title ──────────────────────────────────────────────────────────────
+const TITLE_LABEL_RE = /^(SHEET|DRAWING|DWG\.?)\s*(TITLE|NAME)\s*:?\s*|^TITLE\s*:\s*|^TITLE\s*$/i;
+// words a drawing title is made of; one is required for an unlabeled title
+const TITLE_WORD_RE = /\b(PLANS?|SCHEDULES?|DETAILS?|ELEVATIONS?|SECTIONS?|DIAGRAMS?|RISERS?|LEGENDS?|NOTES|SPECIFICATIONS|COVER|INDEX|SYMBOLS|ABBREVIATIONS|CALCULATIONS|LAYOUTS?|ONE[- ]LINE|SINGLE[- ]LINE|PHOTOMETRICS?|SITE|DEMOLITION|DEMO|ENLARGED|LIGHTING|POWER|SYSTEMS|SIGNAL|FIRE ALARM|TELECOM\w*|GROUNDING|ROOF|FLOOR|LEVEL)\b/i;
+// other title-block captions — a labeled title stops at the next one
+const OTHER_LABEL_RE = /^(SHEET|DRAWING|DWG\.?)\s*(NO\.?|NUMBER|#)|^(PROJECT|JOB|DATE|ISSUE|ISSUED|SCALE|DRAWN|CHECKED|APPROVED|REVISIONS?|REV\.?|PHASE|LOCATION|BUILDING|CLIENT|OWNER|ARCHITECT|ENGINEER|CONSULTANT|SEAL|STAMP|KEY ?PLAN|NORTH|COPYRIGHT|PROJECT NO\.?|COMM\.? NO\.?|SUBMITTAL)\b/i;
+// lines that are never a title even when they hold a sheet word
+const NOT_TITLE_RE = /\d{1,2}\/\d{1,2}\/\d{2,4}|\b(SCALE|NTS|SUITE|STREET|AVE(NUE)?|BLVD|ROAD|WA|MN|WWW\.|\.COM|PHONE|FAX|INC\.?|LLC|COPYRIGHT|©)\b|^\W*$/i;
+
+type Line = { text: string; x: number; x2: number; y: number; h: number };
+
+function titleBlockLines(textContent: TextContentLike, viewport: Viewport, vscale: number): Line[] {
+  const W = viewport.width, H = viewport.height;
+  type It = { s: string; x: number; y: number; h: number; w: number };
+  const items: It[] = [];
+  for (const it of textContent.items || []) {
+    const s = (it.str || "").replace(/\s+/g, " ").trim();
+    if (!s) continue;
+    const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
+    const x = t[4], y = t[5], h = Math.hypot(t[2], t[3]) || it.height || 0;
+    // the title block: the lower-right corner, or the strip down the right edge
+    if (!((x >= W * 0.6 && y >= H * 0.55) || x >= W * 0.82)) continue;
+    items.push({ s, x, y, h, w: it.width != null ? it.width * vscale : s.length * 0.6 * h });
+  }
+  items.sort((a, b) => a.y - b.y || a.x - b.x);
+  const rows: It[][] = [];
+  for (const p of items) {
+    const row = rows[rows.length - 1];
+    if (row && Math.abs(p.y - row[0].y) <= Math.max(2, row[0].h * 0.35)) row.push(p);
+    else rows.push([p]);
+  }
+  const lines: Line[] = [];
+  for (const row of rows) {
+    row.sort((a, b) => a.x - b.x);
+    let cur: It[] = [];
+    const flush = () => {
+      if (!cur.length) return;
+      let text = "";
+      cur.forEach((p, i) => {
+        if (i) { const prev = cur[i - 1]; text += p.x - (prev.x + prev.w) > p.h * 0.2 ? " " : ""; }
+        text += p.s;
+      });
+      const last = cur[cur.length - 1];
+      lines.push({ text: text.replace(/\s+/g, " ").trim(), x: cur[0].x, x2: last.x + last.w, y: cur[0].y, h: Math.max(...cur.map((p) => p.h)) });
+      cur = [];
+    };
+    for (const p of row) {
+      const prev = cur[cur.length - 1];
+      // a wide gap is a new cell of the title block, not a space in the title
+      if (prev && p.x - (prev.x + prev.w) > Math.max(prev.h, p.h) * 2.5) flush();
+      cur.push(p);
+    }
+    flush();
+  }
+  return lines;
+}
+
+const looksLikeTitle = (t: string) => /[A-Za-z]{3}/.test(t) && !NOT_TITLE_RE.test(t) && !OTHER_LABEL_RE.test(t) && !TITLE_LABEL_RE.test(t) && t.length <= 80;
+const tidy = (t: string) => t.replace(/\s+/g, " ").replace(/^[\s:–—-]+|[\s:–—-]+$/g, "").trim();
+
+/** Join a title that wraps onto the next line(s): same size, overlapping columns, close below. */
+function withWrap(lines: Line[], first: Line, accept: (l: Line) => boolean): string {
+  const parts = [first.text];
+  let at = first;
+  for (let k = 0; k < 2; k++) {
+    const next = lines.find((l) => l !== at && l.y > at.y && l.y - at.y <= at.h * 2.2 && Math.abs(l.h - at.h) <= at.h * 0.2
+      && l.x < at.x2 && l.x2 > at.x && accept(l));
+    if (!next) break;
+    parts.push(next.text); at = next;
+  }
+  return tidy(parts.join(" "));
+}
+
+function sheetTitleNear(textContent: TextContentLike, viewport: Viewport, vscale: number, numAt: { x: number; y: number; h: number } | null): string | null {
+  const lines = titleBlockLines(textContent, viewport, vscale);
+  if (!lines.length) return null;
+  const isNumber = (l: Line) => SHEET_NO_RE.test(l.text.toUpperCase().replace(/\s+/g, ""));
+  // 1. labeled
+  for (const lab of lines) {
+    const m = lab.text.match(TITLE_LABEL_RE);
+    if (!m) continue;
+    const rest = tidy(lab.text.slice(m[0].length));
+    if (rest && looksLikeTitle(rest) && !isNumber({ ...lab, text: rest })) return rest;
+    // the value sits under the label (or just right of it), before the next caption
+    const below = lines
+      .filter((l) => l !== lab && l.y > lab.y && l.y - lab.y <= Math.max(lab.h, 6) * 6 && l.x2 > lab.x - lab.h && l.x < lab.x + Math.max(lab.x2 - lab.x, lab.h * 12))
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+    for (const l of below) {
+      if (OTHER_LABEL_RE.test(l.text) || TITLE_LABEL_RE.test(l.text)) break;
+      if (isNumber(l)) continue;
+      if (looksLikeTitle(l.text)) return withWrap(lines, l, (n) => looksLikeTitle(n.text) && !isNumber(n) && !OTHER_LABEL_RE.test(n.text));
+    }
+  }
+  // 2. unlabeled: the sheet-word line nearest the sheet number
+  if (!numAt) return null;
+  const W = viewport.width, H = viewport.height;
+  let pick: Line | null = null, bestD = Infinity;
+  for (const l of lines) {
+    if (!looksLikeTitle(l.text) || !TITLE_WORD_RE.test(l.text) || isNumber(l)) continue;
+    if (!/^[A-Za-z0-9 &,/'().+-]+$/.test(l.text)) continue;   // words, not a note or a table cell of symbols
+    if (l.text.split(" ").length < 2 && !/^(LEGEND|INDEX|COVER|NOTES)$/i.test(l.text)) continue;
+    const cx = (l.x + l.x2) / 2;
+    const d = Math.hypot((cx - numAt.x) / W, (l.y - numAt.y) / H);
+    if (d > 0.22) continue;
+    // a bigger line is the title more often than the small print around it
+    const score = d - Math.min(l.h / Math.max(numAt.h, 1), 1.2) * 0.02;
+    if (score < bestD) { bestD = score; pick = l; }
+  }
+  if (!pick) return null;
+  // a wrapped title can start on the line above the one we found
+  const above = lines.find((l) => l.y < pick!.y && pick!.y - l.y <= pick!.h * 2.2 && Math.abs(l.h - pick!.h) <= pick!.h * 0.2
+    && l.x < pick!.x2 && l.x2 > pick!.x && looksLikeTitle(l.text) && !isNumber(l) && /^[A-Za-z0-9 &,/'().+-]+$/.test(l.text));
+  const start = above || pick;
+  return withWrap(lines, start, (n) => looksLikeTitle(n.text) && !isNumber(n) && /^[A-Za-z0-9 &,/'().+-]+$/.test(n.text));
+}
+
+/** How a sheet is named everywhere: "E101 - FIRST FLOOR POWER PLAN", or the number alone. */
+export function sheetDisplayName(number: string | null | undefined, title: string | null | undefined): string {
+  const n = (number || "").trim(), t = (title || "").trim();
+  if (n && t) return `${n} - ${t}`;
+  return n || t;
 }
 
 // ── scale detect: read the drawn scale note off the page text ────────────────

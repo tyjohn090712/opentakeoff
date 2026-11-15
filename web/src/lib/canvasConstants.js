@@ -108,20 +108,20 @@ export const HL_SIZES = [["F", 8], ["M", 14], ["B", 22]];   // screen px at draw
 // Expressed in TEMPLATE shape (finish_tag/waste_pct/materials, no fill — it
 // defaults from color) so seeding and the Library run the same constructor.
 export const ELECTRICAL_DEFAULTS = [
-  { finish_tag: "REC-20",    color: "#2563eb", hatch: "dots",      waste_pct: 0, materials: [                                            // Duplex receptacle, 20A/1P general use
+  { finish_tag: "REC-20",    measure: "count", desc: "Duplex receptacle, 20A 125V (5-20R)", category: "Receptacles", color: "#2563eb", hatch: "dots",      waste_pct: 0, materials: [                                            // Duplex receptacle, 20A/1P general use
     { name: "Single-gang device box", per: 1, basis: "count", unit: "ea" },
     { name: "Device plate",           per: 1, basis: "count", unit: "ea" },
   ] },
-  { finish_tag: "REC-GFCI",  color: "#0d9488", hatch: "honeycomb", waste_pct: 0, materials: [                                            // GFCI receptacle, 20A/1P
+  { finish_tag: "REC-GFCI",  measure: "count", desc: "GFCI duplex receptacle, 20A", category: "Receptacles", color: "#0d9488", hatch: "honeycomb", waste_pct: 0, materials: [                                            // GFCI receptacle, 20A/1P
     { name: "Single-gang device box", per: 1, basis: "count", unit: "ea" },
     { name: "GFCI device plate",      per: 1, basis: "count", unit: "ea" },
   ] },
-  { finish_tag: "SW-1P",     color: "#9333ea", hatch: "plus",      waste_pct: 0, materials: [{ name: "Single-gang device box", per: 1, basis: "count", unit: "ea" }, { name: "Switch plate", per: 1, basis: "count", unit: "ea" }] },  // Single-pole switch
-  { finish_tag: "SW-3W",     color: "#be185d", hatch: "cross",     waste_pct: 0, materials: [{ name: "Single-gang device box", per: 1, basis: "count", unit: "ea" }, { name: "Switch plate", per: 1, basis: "count", unit: "ea" }] },  // 3-way switch
-  { finish_tag: "DATA-1",    color: "#0891b2", hatch: "scan",      waste_pct: 0, materials: [{ name: "Low-voltage mounting bracket", per: 1, basis: "count", unit: "ea" }] },                                                          // Data/voice outlet (RJ45)
-  { finish_tag: "LT-2X4",    color: "#b8860b", hatch: "grid",      waste_pct: 0, materials: [] },                                                                                                                                       // 2×4 LED troffer — fixture cost usually rides the schedule, not a coverage material
-  { finish_tag: "LT-STRIP",  color: "#dc2626", hatch: "horiz",     waste_pct: 5, materials: [                                            // Linear/strip LED — a LINEAR condition, traced as a run
+  { finish_tag: "SW-1P",     measure: "count", desc: "Single-pole switch, 20A", category: "Switches", color: "#9333ea", hatch: "plus",      waste_pct: 0, materials: [{ name: "Single-gang device box", per: 1, basis: "count", unit: "ea" }, { name: "Switch plate", per: 1, basis: "count", unit: "ea" }] },  // Single-pole switch
+  { finish_tag: "SW-3W",     measure: "count", desc: "3-way switch, 20A", category: "Switches", color: "#be185d", hatch: "cross",     waste_pct: 0, materials: [{ name: "Single-gang device box", per: 1, basis: "count", unit: "ea" }, { name: "Switch plate", per: 1, basis: "count", unit: "ea" }] },  // 3-way switch
+  { finish_tag: "DATA-1",    measure: "count", desc: "Data/voice outlet (RJ45)", category: "Data / low voltage", color: "#0891b2", hatch: "scan",      waste_pct: 0, materials: [{ name: "Low-voltage mounting bracket", per: 1, basis: "count", unit: "ea" }] },                                                          // Data/voice outlet (RJ45)
+  { finish_tag: "LT-2X4",    measure: "count", desc: "2x4 LED troffer", category: "Lighting", color: "#b8860b", hatch: "grid",      waste_pct: 0, materials: [] },                                                                                                                                       // 2×4 LED troffer — fixture cost usually rides the schedule, not a coverage material
+  { finish_tag: "LT-STRIP",  measure: "linear", desc: "Linear / strip LED — traced as a run", category: "Lighting", color: "#dc2626", hatch: "horiz",     waste_pct: 5, materials: [                                            // Linear/strip LED — a LINEAR condition, traced as a run
     { name: "Whips/connectors", per: 8, basis: "linear", unit: "ea", note: "placeholder ~1 per 8 LF run — verify against the fixture's own connection spec" },
   ] },
-  { finish_tag: "PNL",       color: "#1f2937", hatch: "solid",     waste_pct: 0, materials: [] },                                                                                                                                       // Panelboard / equipment placement — a COUNT condition
+  { finish_tag: "PNL",       measure: "count", desc: "Panelboard / equipment placement", category: "Gear", color: "#1f2937", hatch: "solid",     waste_pct: 0, materials: [] },                                                                                                                                       // Panelboard / equipment placement — a COUNT condition
 ];
