@@ -102,8 +102,8 @@ export const STANDARD_SCALES: Scale[] = [
 
 // Pull the drawing's sheet number (e.g. A003, A-101, S1.1) from the title block —
 // the largest sheet-number-shaped token in the lower-right region of the page.
-const SHEET_NO_RE = /^[A-Z]{1,3}\d?[-. ]?\d{1,4}(\.\d{1,2})?[A-Z]?$/;   // E101, A-101, EI312.09, E0-000
-// project-prefixed sheet numbers: EAT06-E-E-142-4, PRJ1-E-101 — a project token, then 2–4 short tokens, the last numeric
+const SHEET_NO_RE = /^[A-Z]{1,3}\d?[-. ]?\d{1,4}(\.\d{1,2})?[A-Z]?$/;   // E101, A-101, EP212.05, E0-000
+// project-prefixed sheet numbers: PRJ01-E-E-142-4, PRJ1-E-101 — a project token, then 2–4 short tokens, the last numeric
 const PROJECT_SHEET_NO_RE = /^[A-Z]{2,6}\d{0,4}(-[A-Z0-9]{1,5}){1,3}-\d{1,4}$/;
 export function extractSheetNumber(textContent: TextContentLike, viewport: Viewport): string | null {
   return extractSheetInfo(textContent, viewport).number;
@@ -146,8 +146,8 @@ export function extractSheetInfo(textContent: TextContentLike, viewport: Viewpor
 
   let best: string | null = null, bestScore = 0, bestAt: { x: number; y: number; h: number } | null = null;
   const consider = (raw: string, x: number, y: number, h: number) => {
-    // a plain number (E101, A-101, EI312.09), or a project-prefixed one
-    // (EAT06-E-E-142-4) — the latter only in the big type of the sheet number
+    // a plain number (E101, A-101, EP212.05), or a project-prefixed one
+    // (PRJ01-E-E-142-4) — the latter only in the big type of the sheet number
     // itself, so a small equipment tag in the title block never wins
     const plain = raw.length >= 2 && raw.length <= 9 && SHEET_NO_RE.test(raw);
     const project = raw.length <= 22 && PROJECT_SHEET_NO_RE.test(raw) && h >= 14;

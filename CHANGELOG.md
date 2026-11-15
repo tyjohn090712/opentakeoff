@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-11-16 — legend autocount: read the project's legend, count it item by item (electrical fork)
+
+### Added
+- **Legend autocount.** **+ legend** (item list) → box the symbol legend → review every row the app read (symbol, name, description, section; Emergency | Normal as two items; Count / Run / Skip suggested) → pick the discipline (E, FA, T… from sheet numbers) → the items are created and counted one at a time: the best copy on the discipline's sheets is ringed, `⏎` uses it (or box your own), autocount runs on those sheets, commit, next item. `web/src/lib/legendReader.ts`, `components/LegendReview.jsx`, `components/LegendStep.jsx`.
+- **Autocount runs in the background.** Symbol search moved to a worker (`web/src/lib/symbol.worker.js`), so a search across dense sheets no longer freezes the page.
+
+### Fixed
+- **Autocount froze the page for over a minute on dense, multi-pen sheets.** Reading the label beside each find chased "leaders" from every text label on the sheet; on a real power plan that never finished in five minutes. Only labels near a find are chased now, and a chase that fans out into linework is abandoned: 26 ms on the same sheet. `web/src/lib/symbollabels.ts`.
+- **Sheet names on more title blocks.** Project-prefixed sheet numbers (*PRJ01-E-E-142-4*) and *E0-000*-style numbers are read; a "Sheet Title/Number" caption no longer reads as the title, a drawing index's "DRAWING NAME" column no longer wins over the title block, and titles may wrap onto four lines.
+
 ## 2026-11-15 — an item list, pick the item not the tool, and runs with counted points, adders and jumps (electrical fork)
 
 ### Added

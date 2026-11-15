@@ -80,9 +80,9 @@ test("item tags and sheet disciplines", () => {
   assert.equal(tagFromDescription("DUPLEX RECEPTACLE (E INDICATES EXISTING)", "Emergency"), "DUPLEX RECEPTACLE EMER");
   assert.ok(tagFromDescription("A VERY LONG DESCRIPTION OF A SPECIAL PURPOSE OUTLET THAT GOES ON").length <= 28);
   assert.equal(disciplineOf("E101"), "E");
-  assert.equal(disciplineOf("EI312.09"), "E");
+  assert.equal(disciplineOf("EP212.05"), "E");
   assert.equal(disciplineOf("FA-201"), "FA");
   assert.equal(disciplineOf("T201"), "T");
-  assert.equal(disciplineOf("EAT06-E-E-142-4"), "E");
+  assert.equal(disciplineOf("PRJ01-E-E-142-4"), "E");
   assert.equal(disciplineOf(""), null);
 });

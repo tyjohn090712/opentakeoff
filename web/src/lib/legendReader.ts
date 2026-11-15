@@ -237,8 +237,8 @@ export function tagFromDescription(desc: string, variant: string | null = null, 
 
 /**
  * The discipline a sheet number belongs to: the letters that lead it ("E101" →
- * "E", "FA-201" → "FA", "EI312.09" → "E"), or for a project-prefixed number
- * the token after the project ("EAT06-E-E-142-4" → "E"). null when unreadable.
+ * "E", "FA-201" → "FA", "EP212.05" → "E"), or for a project-prefixed number
+ * the token after the project ("PRJ01-E-E-142-4" → "E"). null when unreadable.
  */
 export function disciplineOf(sheetNumber: string | null | undefined): string | null {
   const n = String(sheetNumber || "").toUpperCase().trim();
@@ -247,7 +247,7 @@ export function disciplineOf(sheetNumber: string | null | undefined): string | n
   if (parts.length >= 3 && /\d/.test(parts[0])) return /^[A-Z]{1,3}$/.test(parts[1]) ? parts[1] : null;
   const m = n.match(/^([A-Z]{1,3})/);
   if (!m) return null;
-  // "EI312" — a second letter that only qualifies the first (E-Interior) stays E;
+  // "EP212" — a second letter that only qualifies the first (E-Interior) stays E;
   // known two-letter disciplines keep both letters
   const lead = m[1];
   if (/^(FA|FP|LV|TC|TL|TS|SE|SY|EL)$/.test(lead.slice(0, 2))) return lead.slice(0, 2);

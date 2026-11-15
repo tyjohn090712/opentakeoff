@@ -106,9 +106,9 @@ test("no readable title is withheld, not guessed: the number stands alone", () =
 
 test("a project-prefixed sheet number in big type is read; a small equipment tag is not", () => {
   const tc = { items: [
-    item("EAT06-COLO4-CE2-PNL02", 700, 600, 8, 120),
+    item("PRJ01-RM4-CE2-PNL02", 700, 600, 8, 120),
     item("ELECTRICAL", 840, 700, 14, 90), item("POWER PLAN LEVEL 01", 840, 716, 14, 140),
-    item("EAT06-E-E-142-4", 820, 770, 28, 170),
+    item("PRJ01-E-E-142-4", 820, 770, 28, 170),
   ] };
-  assert.deepEqual(extractSheetInfo(tc, VP), { number: "EAT06-E-E-142-4", title: "ELECTRICAL POWER PLAN LEVEL 01" });
+  assert.deepEqual(extractSheetInfo(tc, VP), { number: "PRJ01-E-E-142-4", title: "ELECTRICAL POWER PLAN LEVEL 01" });
 });

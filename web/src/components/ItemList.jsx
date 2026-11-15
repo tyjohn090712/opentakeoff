@@ -7,7 +7,7 @@
 //
 // Contract:
 //   <ItemList conditions activeId palette measureOf qtyOf
-//             onPick(id) onEdit(id) onTogglePin(id) onFind() onAdd() onRaceway() onCollapse() />
+//             onPick(id) onEdit(id) onTogglePin(id) onFind() onAdd() onRaceway() onLegend() onCollapse() />
 import React, { useMemo, useState } from "react";
 import { HatchSwatch } from "./hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
@@ -17,7 +17,7 @@ const TOOL_GLYPH = { count: "EA", linear: "LF", area: "SF" };
 const mono = { fontFamily: "var(--f-mono)" };
 const footBtn = { flex: 1, padding: "6px 4px", border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11.5, color: "var(--ink-muted)", borderRadius: 0 };
 
-export default function ItemList({ conditions = [], activeId = "", palette = [], measureOf = () => null, qtyOf = () => "", onPick, onEdit, onTogglePin, onFind, onAdd, onRaceway, onCollapse }) {
+export default function ItemList({ conditions = [], activeId = "", palette = [], measureOf = () => null, qtyOf = () => "", onPick, onEdit, onTogglePin, onFind, onAdd, onRaceway, onLegend, onCollapse }) {
   const [q, setQ] = useState("");
   const [closed, setClosed] = useState(() => new Set());
   const groups = useMemo(() => itemGroups(conditions, q, measureOf), [conditions, q, measureOf]);
@@ -88,6 +88,7 @@ export default function ItemList({ conditions = [], activeId = "", palette = [],
         })}
       </div>
       <div style={{ display: "flex", gap: 6, padding: 8, borderTop: "1px solid var(--ink-faint)" }}>
+        <button type="button" onClick={onLegend} title="Legend autocount: box the project's symbol legend, pick the items, and count them sheet by sheet" style={{ ...footBtn, borderColor: "var(--cobalt)", color: "var(--cobalt)" }}>+ legend</button>
         <button type="button" onClick={onFind} title="Add an item from the tool chest — the same search as Space" style={footBtn}>+ chest</button>
         <button type="button" onClick={onRaceway} title="Build a raceway run — type, size, conductors, mounting" style={footBtn}>+ raceway</button>
         <button type="button" onClick={onAdd} title="Add a blank item" style={footBtn}>+ blank</button>

@@ -62,7 +62,7 @@ import { tidyRing, axisLockPoint } from "../lib/ringTidy";
 // The Symbol tool (#264) — the canvas face for the sweep engine. The engine,
 // counter-examples, the luminance channel, and label corroboration all live
 // as pure web libs already; this file adds only the gesture and the review.
-import { sweepSymbols, fingerprintSymbol, matchSymbol } from "../lib/symbolsweep";
+import { sweepSymbols } from "../lib/symbolsweep";
 import { sanitizeBreakoutAreas, areaAt, areasOn, areaTallyText } from "../lib/breakouts.js";
 import { collapseFinds } from "../lib/sweepReview.js";
 import { labelPlacements } from "../lib/symbollabels";
@@ -78,6 +78,21 @@ const netPending = new Map();   // req → {resolve}
 let netReq = 0;
 if (netWorker) netWorker.onmessage = (ev) => { const m = ev.data; const p = netPending.get(m.req); if (p) { netPending.delete(m.req); p.resolve(m); } };
 function netCall(msg) { return new Promise((resolve) => { const req = ++netReq; netPending.set(req, { resolve }); netWorker.postMessage({ ...msg, req }); }); }
+// autocount's symbol search runs in a worker too (lib/symbol.worker.js): a
+// turned-and-mirrored search of a dense E sheet froze the page for over a
+// minute on the main thread. Each sheet's segments go over once, by key.
+const symWorker = typeof Worker !== "undefined" ? new Worker(new URL("../lib/symbol.worker.js", import.meta.url), { type: "module" }) : null;
+const symPending = new Map();
+let symReq = 0;
+const symSent = new Set();
+if (symWorker) symWorker.onmessage = (ev) => { const m = ev.data; const p = symPending.get(m.req); if (p) { symPending.delete(m.req); if (m.type === "error") p.reject(new Error(m.error)); else p.resolve(m.res); } };
+function symCall(msg) { return new Promise((resolve, reject) => { const req = ++symReq; symPending.set(req, { resolve, reject }); symWorker.postMessage({ ...msg, req }); }); }
+// make sure the worker holds this sheet's geometry, then run one call
+async function symOn(key, g, msg) {
+  if (!symWorker) throw new Error("This browser can't run the symbol search in the background.");
+  if (!symSent.has(key)) { await symCall({ type: "segs", key, segs: Float64Array.from(g.segs), lum: g.lum || null }); symSent.add(key); }
+  return symCall({ ...msg, key });
+}
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 // PDF layer roles (#85): the pure name→role classifier and the override
 // plumbing shared with the MCP session — the canvas consumes buildMask's
@@ -159,6 +174,9 @@ import QuickPick from "../components/QuickPick.jsx";
 import RunMarks from "../components/RunMarks.jsx";
 import ItemList from "../components/ItemList.jsx";
 import SymbolOptions from "../components/SymbolOptions.jsx";
+import LegendReview from "../components/LegendReview.jsx";
+import LegendStep from "../components/LegendStep.jsx";
+import { readLegend, tagFromDescription, disciplineOf } from "../lib/legendReader.ts";
 import { missingStarters, starterCategory } from "../lib/deviceCatalog.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
 // pool in lib/tilePool.ts, DOM/Worker orchestration glue here via one
@@ -788,6 +806,12 @@ export default function TakeoffCanvas() {
   const [breakoutAreas, setBreakoutAreas] = useState([]);   // named breakout regions per sheet — additive `breakout_areas` payload key (lib/breakouts.js)
   const [noBreakouts, setNoBreakouts] = useState(false);    // the estimator said this job has no breakout areas — `no_breakouts` payload key
   const otherSegsRef = useRef(new Map());                    // sheetKey → { segs, lum, w, h } for sheets not on screen (autocount across all pages)
+  const [legendDraft, setLegendDraft] = useState(null);     // a read legend under review (components/LegendReview.jsx)
+  const [legendSession, setLegendSessionState] = useState(null);   // the guided autocount walk: { legendKey, discipline, sheetKeys, queue, i, done, status, proposal }
+  const legendSessionRef = useRef(null);
+  const setLegendSession = (v) => setLegendSessionState((prev) => { const next = typeof v === "function" ? v(prev) : v; legendSessionRef.current = next; return next; });
+  const sheetNumsRef = useRef(new Map());                   // sheetKey → title-block number, read on demand for the discipline filter
+  const legendFocusRef = useRef("");                        // the proposal last centered on screen
   const [symbolAsk, setSymbolAsk] = useState(null);         // a boxed symbol waiting on its options window — { a, b }
   const [symbolOpts, setSymbolOpts] = useState(() => {        // that window's answers (turned / mirrored copies, count threshold %), remembered per browser
     const d = { rotations: true, mirror: true, pct: 75, scope: "sheet", split: "one" };   // 75%: real sheets have backgrounds behind the symbols
@@ -2872,6 +2896,7 @@ export default function TakeoffCanvas() {
         // auto-expires — so it can never contest ⏎ for long, and a pending
         // agent-proposal accept resumes the key the moment the offer clears
         if (agentOfferFnsRef.current?.pending()) { e.preventDefault(); agentOfferFnsRef.current.confirm(); return; }
+        if (legendSessionRef.current?.status === "proposed" && !sweepRef.current && !poly.length) { e.preventDefault(); legendUse(); return; }
         if (tool === "oneclick" && proposal?.regions.length) { e.preventDefault(); createProposal(); return; }
         const ok = !bowOpen && (((tool === "area" || tool === "deduct") && poly.length >= 3) || ((tool === "zone" || tool === "breakout") && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface") && poly.length >= 2));
         if (ok) { e.preventDefault(); finishShape(); return; }
@@ -3115,7 +3140,7 @@ export default function TakeoffCanvas() {
     // cursor here; otherwise a stale ref freezes the drag or jumps it on grab.
     // schedule (marquee) wants the raw cursor like select — snapping a corner to
     // a vector vertex would shift the box off the schedule and misread the region
-    const rawCursor = tool === "select" || tool === "schedule" || tool === "panelsched";
+    const rawCursor = tool === "select" || tool === "schedule" || tool === "panelsched" || tool === "legend";
     const p = (!rawCursor && snapOn && snapRef.current) ? snapRef.current
       : (!rawCursor && angleOn && angleRef.current) ? angleRef.current
         : toImage(e.clientX, e.clientY);
@@ -3180,6 +3205,11 @@ export default function TakeoffCanvas() {
       // two-click marquee, isolated state: first click drops the anchor, second reads the box
       if (!scheduleAnchor) setScheduleAnchor(p);
       else { importScheduleFromRect(scheduleAnchor, p); setScheduleAnchor(null); setTool("select"); }
+    }
+    else if (tool === "legend") {
+      // the guided autocount step: box the symbol legend (two clicks)
+      if (!scheduleAnchor) setScheduleAnchor(p);
+      else { const a = scheduleAnchor; setScheduleAnchor(null); setTool("select"); readLegendBox(a, p); }
     }
     else if (tool === "panelsched") {
       // same marquee; the tool STAYS armed — a sheet of panel schedules is
@@ -3790,7 +3820,7 @@ export default function TakeoffCanvas() {
       } else arcRef.current.style.display = "none";
     }
     if (rectRef.current) {
-      const schedDraw = (tool === "schedule" || tool === "panelsched") && scheduleAnchor;
+      const schedDraw = (tool === "schedule" || tool === "panelsched" || tool === "legend") && scheduleAnchor;
       const symDraw = tool === "symbol" && symbolAnchor;
       const imgDraw = tool === "image" && imageAnchor;
       if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw || symDraw || imgDraw)) {
@@ -4601,7 +4631,8 @@ export default function TakeoffCanvas() {
     try {
       // the options window's answers: turned / mirrored copies, and the count
       // threshold — at or above it a copy counts, a band below it asks
-      res = sweepSymbols(segs, rect, { ...(lum ? { lum } : {}), ...sweepScoreOpts(opts) });
+      setCommitMsg("Autocount: searching this sheet…");
+      res = await symOn(`${key}@${docEpoch}`, { segs, lum }, { type: "sweep", rect, opts: sweepScoreOpts(opts) });
     } catch (e) {
       // the engine's refusals (empty marquee, region-sized marquee) are
       // instructions, exactly as the MCP surfaces them
@@ -4643,7 +4674,7 @@ export default function TakeoffCanvas() {
     // all pages: the boxed symbol's fingerprint, matched sheet by sheet. Symbols
     // are drawn at paper size, so every sheet is searched at the same render
     // scale — no ratio. Sheets land in the review as they finish.
-    const fp = fingerprintSymbol(segs, rect, lum);
+    const fp = await symOn(`${key}@${docEpoch}`, { segs, lum }, { type: "fingerprint", rect });
     const keys = await allSheetKeys();
     const todo = keys.filter((k) => k !== key);
     let done = 0;
@@ -4652,7 +4683,7 @@ export default function TakeoffCanvas() {
       try {
         const g = await segsForSheet(k);
         if (!g || !g.segs.length) continue;
-        const r = matchSymbol(fp, g.segs, { ...(g.lum ? { lum: g.lum } : {}), ...sweepScoreOpts(opts) });
+        const r = await symOn(`${k}@${docEpoch}`, g, { type: "match", fp, opts: sweepScoreOpts(opts) });
         if (!r.matches.length && !r.withheld.length) continue;
         const f = collapseFinds(r.matches.map((m) => ({ ...m, label: null })), clusterQuestions(r.withheld.map((w) => ({ ...w, label: null })), clusterR), clusterR);
         if (!f.matches.length && !f.questions.length) continue;
@@ -4699,6 +4730,159 @@ export default function TakeoffCanvas() {
     }
     return true;
   }
+  // ── guided autocount from the legend (components/LegendReview.jsx, LegendStep.jsx) ──
+  // a sheet's title-block number, read on demand (gallery / pager labels first)
+  async function sheetNumberOf(k) {
+    if (sheetNumsRef.current.has(k)) return sheetNumsRef.current.get(k);
+    const t = parseSheetKey(k);
+    let n = galleryLabels[k] || (t.file === active ? pageLabels[t.page] : "") || "";
+    if (!n) {
+      try { const pg = await (await docFor(t.file)).getPage(t.page); n = extractSheetInfo(await pg.getTextContent(), pg.getViewport({ scale: RENDER_SCALE })).number || ""; } catch { /* unreadable */ }
+    }
+    sheetNumsRef.current.set(k, n);
+    return n;
+  }
+  async function readLegendBox(a, b) {
+    const tp = panelAt(a[0]);
+    const key = tp.key;
+    const segs = vectorSegsRef.current.get(key);
+    if (!segs || !segs.length) { setCommitMsg("This legend has no vector linework (likely a scan or screenshot). Export the legend page from the original PDF and open that."); return; }
+    setCommitMsg("Reading the legend…");
+    const spans = await ensureTextSpans(key);
+    const rect = [[Math.min(a[0], b[0]) - tp.xOffset, Math.min(a[1], b[1])], [Math.max(a[0], b[0]) - tp.xOffset, Math.max(a[1], b[1])]];
+    const rows = readLegend(spans, segs, rect);
+    if (!rows.length) { setCommitMsg("No legend rows in that box — box the table itself: symbols with their descriptions beside them."); return; }
+    const have = new Map(conditions.map((c) => [normalizeTag(c.finish_tag), c.id]));
+    const entries = [];
+    const used = new Set();
+    for (const r of rows) {
+      r.symbols.forEach((sy, k) => {
+        const variant = r.symbols.length > 1 ? sy.variant : null;
+        // names are cut short, so two legend rows can land on one name
+        // (DUPLEX RECEPTACLE 120V vs … CEILING MOUNTED) — never merge them
+        let name = tagFromDescription(r.description, variant, 36);
+        for (let n = 2; used.has(normalizeTag(name)); n++) name = `${tagFromDescription(r.description, variant, 33)} ${n}`;
+        used.add(normalizeTag(name));
+        entries.push({ id: `${r.id}-${k}`, section: r.section, description: variant ? `${r.description} — ${variant}` : r.description, variant, kind: r.kind, reason: r.reason, include: r.kind !== "skip", name, rect: sy.rect, existing: have.has(normalizeTag(name)) });
+      });
+    }
+    // disciplines on hand, from every sheet's number; the legend's own first
+    const keys = (await allSheetKeysPlain()).filter((k) => k !== key);
+    const discs = new Map();
+    for (const k of keys) { const d = disciplineOf(await sheetNumberOf(k)); if (d) discs.set(d, (discs.get(d) || 0) + 1); }
+    const own = disciplineOf(await sheetNumberOf(key));
+    const list = [...discs.keys()].sort((x, y) => (x === own ? -1 : y === own ? 1 : discs.get(y) - discs.get(x)));
+    setCommitMsg(`Read ${rows.length} legend rows — review them, then start.`);
+    setLegendDraft({ key, segs, entries, disciplines: list, discipline: own && discs.has(own) ? own : list[0] || "", sheetName: tabLabel(key) });
+  }
+  // every sheet, ignoring the walk's filter
+  async function allSheetKeysPlain() {
+    const out = [];
+    for (const f of sheets) {
+      try { const pdf = await docFor(f.name); for (let n = 1; n <= (pdf.numPages || 1); n++) out.push(n > 1 ? `${f.name}#${n}` : f.name); } catch { /* unreadable file */ }
+    }
+    return out;
+  }
+  async function startLegendWalk({ entries, discipline }) {
+    const draft = legendDraft;
+    setLegendDraft(null);
+    const have = new Map(conditions.map((c) => [normalizeTag(c.finish_tag), c.id]));
+    const queue = [];
+    for (const e of entries) {
+      const tag = (e.name || "").trim() || tagFromDescription(e.description);
+      let id = have.get(normalizeTag(tag));
+      if (!id) {
+        const c = mintCondition(tag);
+        const category = (e.section || "Legend").toLowerCase().replace(/(^|\s)\S/g, (m) => m.toUpperCase());
+        setConditions((cs) => cs.map((x) => (x.id === c.id ? { ...x, desc: e.description, category, measure: e.kind === "run" ? "linear" : "count" } : x)));
+        id = c.id;
+        have.set(normalizeTag(tag), id);
+      }
+      if (e.kind === "count") queue.push({ condId: id, name: tag, description: e.description, rect: e.rect });
+    }
+    const all = (await allSheetKeysPlain()).filter((k) => k !== draft.key);
+    const sheetKeys = [];
+    for (const k of all) if (!discipline || disciplineOf(await sheetNumberOf(k)) === discipline) sheetKeys.push(k);
+    if (!queue.length) { setCommitMsg(`Added ${entries.length} item${entries.length === 1 ? "" : "s"} — none to count (runs are traced with L).`); return; }
+    if (!sheetKeys.length) { setCommitMsg(`No ${discipline} sheets found by sheet number — items added; count them with Y.`); return; }
+    const sess = { legendKey: draft.key, legendSegs: draft.segs, discipline, sheetKeys, queue, i: 0, done: [], status: "searching", proposal: null };
+    setLegendSession(sess);
+    legendPropose(sess);
+  }
+  // find the best copy of the walk's current item on its sheets, and show it
+  async function legendPropose(sess) {
+    const item = sess.queue[sess.i];
+    if (!item) {
+      const total = sess.done.reduce((n, d) => n + d.n, 0);
+      setCommitMsg(`Legend autocount finished: ${sess.done.length} item${sess.done.length === 1 ? "" : "s"} counted, ${total} EA.`);
+      setLegendSession(null);
+      return;
+    }
+    setLegendSession({ ...sess, status: "searching", proposal: null });
+    const leg = await segsForSheet(sess.legendKey);
+    let fp;
+    try { fp = await symOn(`${sess.legendKey}@${docEpoch}`, leg, { type: "fingerprint", rect: item.rect }); } catch { fp = null; }
+    let best = null;
+    if (fp) {
+      const order = [...sess.sheetKeys].sort((x, y) => (x === sheetKey ? -1 : y === sheetKey ? 1 : 0));
+      for (const k of order) {
+        if (legendSessionRef.current?.queue !== sess.queue || legendSessionRef.current?.i !== sess.i) return;   // stopped or moved on
+        let g;
+        try { g = await segsForSheet(k); } catch { continue; }
+        if (!g?.segs?.length) continue;
+        let r;
+        try { r = await symOn(`${k}@${docEpoch}`, g, { type: "match", fp, opts: { scoreHigh: 0.6, scoreLow: 0.45 } }); } catch { continue; }
+        for (const m of [...r.matches, ...r.withheld]) if (!best || m.score > best.score) best = { key: k, at: m.at, score: m.score, footprint: fp.footprint };
+        if (best && best.score >= 0.85) break;
+      }
+    }
+    if (legendSessionRef.current?.queue !== sess.queue || legendSessionRef.current?.i !== sess.i) return;
+    if (!best) { setLegendSession((s0) => (s0 ? { ...s0, status: "none", proposal: null } : s0)); return; }
+    legendFocusRef.current = "";
+    setLegendSession((s0) => (s0 ? { ...s0, status: "proposed", proposal: best } : s0));
+    if (!groupKeys.includes(best.key)) goToSheet(best.key);
+  }
+  function legendUse() {
+    const sess = legendSessionRef.current;
+    const p = sess?.proposal;
+    if (!p) return;
+    const item = sess.queue[sess.i];
+    const pp = panels.find((x) => x.key === p.key);
+    if (!pp) { setCommitMsg("Opening the sheet with that copy — press ⏎ again in a moment."); goToSheet(p.key); return; }
+    activateCondition(item.condId, { reassign: false, arm: false });
+    const half = p.footprint / 2 + 3;
+    setSymbolAsk({ a: [p.at[0] - half + pp.xOffset, p.at[1] - half], b: [p.at[0] + half + pp.xOffset, p.at[1] + half] });
+  }
+  function legendBox() {
+    const sess = legendSessionRef.current;
+    if (!sess) return;
+    activateCondition(sess.queue[sess.i].condId, { reassign: false, arm: false });
+    setTool("symbol");
+    setCommitMsg(`Box one ${sess.queue[sess.i].name} on the plan (two clicks).`);
+  }
+  function legendNext(doneN = null) {
+    const sess = legendSessionRef.current;
+    if (!sess) return;
+    const item = sess.queue[sess.i];
+    const next = { ...sess, i: sess.i + 1, done: doneN != null ? [...sess.done, { name: item.name, n: doneN }] : sess.done };
+    setLegendSession(next);
+    legendPropose(next);
+  }
+  useEffect(() => {
+    const pr = legendSession?.status === "proposed" ? legendSession.proposal : null;
+    if (!pr) return;
+    const tag = `${pr.key}@${pr.at[0]},${pr.at[1]}`;
+    if (legendFocusRef.current === tag) return;
+    const pp = panels.find((x) => x.key === pr.key);
+    if (!pp?.img?.w) return;
+    legendFocusRef.current = tag;
+    const el = containerRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const scale = Math.max(tfRef.current.scale, Math.min(1.2, r.width / 900));   // close enough to see the symbol
+      setTfNow({ x: r.width / 2 - (pr.at[0] + pp.xOffset) * scale, y: r.height / 2 - pr.at[1] * scale, scale });
+    }
+  });   // no deps: runs each render; the tag guard makes it one-shot per proposal
   // the options window's answers as engine options: turned / mirrored copies,
   // and the threshold — at or above it a copy counts, the 10 points below ask
   function sweepScoreOpts(opts) {
@@ -4717,6 +4901,7 @@ export default function TakeoffCanvas() {
   }
   // every sheet in the project: each page of each loaded PDF
   async function allSheetKeys() {
+    if (legendSessionRef.current?.sheetKeys?.length) return legendSessionRef.current.sheetKeys;   // the guided walk counts its discipline's sheets only
     const out = [];
     for (const f of sheets) {
       try { const pdf = await docFor(f.name); for (let n = 1; n <= (pdf.numPages || 1); n++) out.push(n > 1 ? `${f.name}#${n}` : f.name); } catch { /* unreadable file */ }
@@ -4796,6 +4981,7 @@ export default function TakeoffCanvas() {
     const sheetN = new Set(rows.map((r) => r.sheet)).size;
     setCommitMsg(`Committed ${rows.length} EA under ${condById[activeCond]?.finish_tag || "condition"}${sheetN > 1 ? ` on ${sheetN} sheets` : ""}${byArea ? ` — ${areaTallyText(areaNames)}` : ""}${openElsewhere ? ` · ${openElsewhere} unanswered ? left out` : ""}${sw.includeSeed ? " — seed included" : ""}${skippedN ? ` · ${skippedN} excluded by label` : ""}${clickedOffN ? ` · ${clickedOffN} left out by click` : ""} · one undo step (${keyText("⌘Z")}). Symbol is still armed: pick the next item and box its symbol.`);
     setSweep(null);
+    if (legendSessionRef.current) { setTool("select"); legendNext(rows.length); return; }   // the guided walk: next legend item
     setTool("symbol");   // the next item: pick it (Space or the item list), box one symbol
   }
 
@@ -8809,6 +8995,7 @@ export default function TakeoffCanvas() {
            onFind={() => setQuickPickOpen(true)}
            onAdd={() => { addCondition(); setPanelPrefs((p) => (p.collapsed ? { ...p, collapsed: false } : p)); }}
            onRaceway={() => setRacewayOpen(true)}
+           onLegend={() => { setTool("legend"); setScheduleAnchor(null); setCommitMsg("Legend autocount: box the symbol legend on the legend sheet — click one corner, then the opposite corner."); }}
            onCollapse={() => setPanelPrefs((p) => ({ ...p, items: false }))}
          />
        )}
@@ -9821,7 +10008,7 @@ export default function TakeoffCanvas() {
                   fill; rect & symbol marquees are measure tools, themed via DS. */}
               {(() => {
                 const rectDeduct = tool === "deduct" || tool === "deduct-rect";
-                const rectNeutral = tool === "schedule" || tool === "panelsched";   // selection gesture, not measurement — never themed
+                const rectNeutral = tool === "schedule" || tool === "panelsched" || tool === "legend";   // selection gesture, not measurement — never themed
                 return <rect ref={rectRef}
                   fill={rectDeduct ? "rgba(176,58,38,.22)" : rectNeutral ? shapeFill(aCond) : draftFill}
                   stroke={rectDeduct ? "#b03a26" : rectNeutral ? "#1f3fc7" : DS.accent}
@@ -9831,6 +10018,19 @@ export default function TakeoffCanvas() {
               <rect ref={highlightRef} fill="rgba(196,122,16,.18)" stroke="#c47a10" strokeWidth={2 / tf.scale} style={{ display: "none" }} />
               <line ref={dimRef} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               <path ref={hlPathRef} style={{ display: "none" }} />
+              {/* legend autocount: the proposed copy, ringed */}
+              {legendSession?.status === "proposed" && !sweep && legendSession.proposal && (() => {
+                const pr = legendSession.proposal;
+                const pp = panels.find((x) => x.key === pr.key);
+                if (!pp) return null;
+                const k = 1 / tf.scale, r = Math.max(18 * k, pr.footprint * 0.8);
+                return (
+                  <g pointerEvents="none">
+                    <circle cx={pr.at[0] + pp.xOffset} cy={pr.at[1]} r={r} fill="none" stroke="#7c3aed" strokeWidth={3 * k} />
+                    <circle cx={pr.at[0] + pp.xOffset} cy={pr.at[1]} r={r + 8 * k} fill="none" stroke="#7c3aed" strokeWidth={1.5 * k} strokeDasharray={`${4 * k} ${3 * k}`} />
+                  </g>
+                );
+              })()}
               {/* Symbol sweep review overlay (#264) — the same glyph language the
                   MCP renders ship: seed = violet double ring, question = orange
                   ?-circle, accepted/committed-to-be = the condition color. */}
@@ -10499,10 +10699,41 @@ export default function TakeoffCanvas() {
         />
       )}
 
+      {legendDraft && (
+        <LegendReview
+          entries={legendDraft.entries}
+          segs={legendDraft.segs}
+          disciplines={legendDraft.disciplines}
+          discipline={legendDraft.discipline}
+          sheetName={legendDraft.sheetName}
+          onMenuDepth={onMenuDepth}
+          onCancel={() => setLegendDraft(null)}
+          onCreate={startLegendWalk}
+        />
+      )}
+      {legendSession && (() => {
+        const it = legendSession.queue[legendSession.i];
+        if (!it) return null;
+        return (
+          <LegendStep
+            step={{ i: legendSession.i, n: legendSession.queue.length, name: it.name, description: it.description, discipline: legendSession.discipline }}
+            segs={legendSession.legendSegs}
+            rect={it.rect}
+            status={sweep ? "reviewing" : legendSession.status}
+            proposal={legendSession.proposal ? { sheetName: tabLabel(legendSession.proposal.key), score: legendSession.proposal.score } : null}
+            done={legendSession.done}
+            onUse={legendUse}
+            onBox={legendBox}
+            onSkip={() => { setSweep(null); legendNext(); }}
+            onStop={() => { setLegendSession(null); setCommitMsg("Legend autocount stopped — the items stay in the takeoff."); }}
+          />
+        );
+      })()}
+
       {symbolAsk && (
         <SymbolOptions
           itemTag={aCond?.finish_tag || ""}
-          opts={symbolOpts}
+          opts={legendSession ? { ...symbolOpts, scope: "all" } : symbolOpts}
           sheetName={tabLabel(panelAt(symbolAsk.a[0]).key)}
           sheetId={panelAt(symbolAsk.a[0]).key}
           areas={breakoutAreas}

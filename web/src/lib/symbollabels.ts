@@ -62,6 +62,13 @@ export const LEADER_DARK_LUM = 60;
 const LEADER_HOP_PX = 14;
 const LEADER_HOPS = 4;
 const LEADER_HIT_PX = 30;
+// A leader is a thin chain: tail, maybe a bend, an arrowhead. A walk whose
+// frontier fans out wider than this has left the leader for linework, and is
+// abandoned (on a dense real E sheet the unbounded walk ran for minutes).
+const LEADER_MAX_FRONTIER = 24;
+// Only a token near some still-unnamed placement can lead to it: hops are
+// short, so a token farther than this from every placement is not chased.
+const LEADER_TOKEN_REACH_PX = 600;
 
 interface DarkIndex { segs: number[][]; cells: Map<number, number[]>; cell: number }
 
@@ -85,13 +92,13 @@ function buildDarkIndex(segs: number[], lum: Uint8Array): DarkIndex {
 }
 
 function nearDark(idx: DarkIndex, x: number, y: number): number[] {
-  const out: number[] = [];
+  const out = new Set<number>();
   const cx = Math.floor(x / idx.cell), cy = Math.floor(y / idx.cell);
   for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
     const a = idx.cells.get((cx + dx) * 73856093 ^ (cy + dy) * 19349663);
-    if (a) for (const i of a) if (!out.includes(i)) out.push(i);
+    if (a) for (const i of a) out.add(i);
   }
-  return out;
+  return [...out];
 }
 
 /** Walk touching dark segments outward from a start point, a few hops — the
@@ -118,6 +125,7 @@ function chase(idx: DarkIndex, start: Point): Point[] {
       }
     }
     if (!next.length) break;
+    if (next.length > LEADER_MAX_FRONTIER) return [start];   // fanned out: linework, not a leader
     frontier = next;
   }
   return reached;
@@ -165,6 +173,8 @@ export function labelPlacements(
       const idx = buildDarkIndex(segs, lum);
       for (const t of tokens) {
         const cy = (t.y0 + t.y1) / 2;
+        const cx = (t.x0 + t.x1) / 2;
+        if (!placements.some((q, p) => !out[p] && Math.hypot(q[0] - cx, q[1] - cy) <= LEADER_TOKEN_REACH_PX)) continue;
         for (const start of [[t.x0 - 4, cy], [t.x1 + 4, cy]] as Point[]) {
           const reach = chase(idx, start);
           for (let p = 0; p < placements.length; p++) {

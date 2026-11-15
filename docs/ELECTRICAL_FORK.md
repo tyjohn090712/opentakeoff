@@ -67,6 +67,13 @@ The estimator's review: the tool is fast but it's hard to pick the item you're t
 - **Step 2, the item list** (`components/ItemList.jsx`, `itemGroups` in `lib/chest.js`): a 268 px column after the tool rail, grouped by `category` (linear items without one under "Runs"), filter box, per-line total from `conditionTotals`, pin to 1–9, ✎ / double-click opens the item in the Takeoffs drawer (`openConditionInPanel`). While it shows, the pin band and the active item's editor row are hidden. `panelPrefs.items` (default on) persists the hide; off on narrow screens and in focus mode.
 - Choices made without asking (say so if wrong): counted points add EA to the run's own item (not a separate count item); Space while counting opens the search; the default adder is 10 ft; uncounted points aren't drawn on a finished run.
 
+## Legend autocount — first version (2026-11-16)
+
+Tested on the estimator's own sheets (kept out of the repo): a hospital symbols sheet read 474 rows, 64 with Emergency | Normal symbols; a data-center legend read 240. Boxing its Receptacles section gave 39 items; "Duplex receptacle 120V — Normal" proposed a copy on the power plan at 79%, counted 55 across the two E sheets in 13 s with the page responsive.
+- **Legend symbols don't count plans directly.** Matched straight from the legend, a duplex found 35 of the plan's receptacles and missed most (mounting-height text and walls crowd the plan copies). Seeded from a plan copy it finds every copy drawn the same way. Hence the walk: propose a plan copy, the estimator confirms it, then count.
+- **Fills aren't seen.** The engine matches lines; a solid (Emergency) symbol and an open (Normal) one look nearly alike, and the legend's solid symbols read as fragments. Next: make fingerprints fill-aware (the geometry already flags fill-only segments, `SEG_FILLONLY`, and subpath `fillLum`).
+- Not yet: matching legend rows to the tool chest by description, letter modifiers on plan copies feeding variants automatically (the review's by-label exclusion does it by hand), and "existing" (light or dashed) as separate items.
+
 ## How this estimator works — decisions that shape what's built next (2026-11)
 
 From the estimator (mostly tenant improvements), in their words, condensed:

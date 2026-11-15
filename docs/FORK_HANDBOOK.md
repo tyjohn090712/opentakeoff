@@ -37,6 +37,7 @@ From the estimator, condensed; the longer version is "How this estimator works" 
 - **Sheets are always named "sheet number - sheet title"** (2026-11-15), read from the title block (`extractSheetInfo`, `sheetDisplayName` in `sheets.ts`). No title found → the number alone, never a guess. The bare number stays the key for deep links and image names (`sheetBaseLabel`).
 - **Autocount is a step in the estimate, legend-driven** (2026-11-15, the goal): pick a discipline (electrical first, then fire alarm, telecom…), read the project's symbol legend, and count every legend symbol across that discipline's sheets. Built so far: the per-symbol pass — options window (turned / mirrored copies, threshold default 75%, scope this sheet / all pages × one total / by breakout area), click-to-toggle review, all-pages search, and breakout areas (named regions → shape labels). Autocount is gated: breakout areas drawn, or "no breakout areas" ticked.
 - **What real legends look like** (two sent 2026-11-15, as screenshots, so no text or linework): a SYMBOL | DESCRIPTION (| MTG HT) table in sections (Lighting, Power, Receptacles, Switches, Lighting Controls, Fire Alarm, Motors, Cabling, Equipment and Wiring, Miscellaneous). One base symbol with a subscript letter is a different device (duplex vs G = GFCI, C = above counter, E = existing; $ vs $3, $4, $LV, $OS), so geometry alone can't pick the item — the letter beside it must be read. Wiring and conduit rows are runs, not counts; note, flag and callout rows aren't counted; line weight or dashes mark existing to remain or remove. A fire-alarm section can sit inside the electrical legend.
+- **Legend autocount answers (2026-11-16):** Emergency and Normal symbols are separate items; existing devices become separate "existing" items (not built yet). The walk is guided: the app proposes a plan copy per item, the estimator confirms or boxes one, then it counts.
 - **Device depth matters:** `20A duplex`, `20A switched duplex`, `wall-mount speaker/strobe` and so on, each its own item. The starter catalog is mine, from common practice; the estimator will correct it.
 
 ## 3. What exists (and where)
@@ -50,6 +51,7 @@ Waves 1–4, the raceway builder, the tool chest, and steps 1–2 of the LiveCou
 | Raceway builder (conduit and MC cable) | `raceway.ts`, `components/RacewayBuilder.jsx` |
 | Tool chest and starter devices | `chest.js`, `deviceCatalog.js`, Takeoffs panel › Chest tab (`components/TakeoffsPanel.jsx`) |
 | Material line `mult` and `waste_pct` | `totals.js` (`conditionTotals`, `coverageText`) |
+| Legend autocount (read legend → review → walk item by item) | `legendReader.ts`, `components/LegendReview.jsx`, `components/LegendStep.jsx`, `symbol.worker.js` (symbol search off the page) |
 | Autocount options, all-pages search, breakout areas | `components/SymbolOptions.jsx`, `breakouts.js`, `sweepReview.js`, `symbolsweep.ts` (`fingerprintSymbol`, `matchSymbol`) |
 | Item list (left), item search (`Space`), item arms its tool, run points / adders / `G` jumps | `components/ItemList.jsx`, `components/QuickPick.jsx`, `chest.js` (`quickPickResults`, `conditionMeasure`), `runPoints.js`, `components/RunMarks.jsx` |
 | Tests (synthetic data only) | `web/test/{panelSchedule,panelRaster,panelSchedules,raceway,chest}.test.ts` |
@@ -72,6 +74,8 @@ Waves 1–4, the raceway builder, the tool chest, and steps 1–2 of the LiveCou
 - **Persistence is the browser's IndexedDB:** database `opentakeoff`, store `meta`, key `annotations` is the one project; `condition_templates` is the chest. One project per browser, no sharing between estimators (an open question). Deleting `annotations` and reloading is how to get a fresh project.
 - **Sheet-title reading is tuned on the sample plan and synthetic layouts only.** Real title blocks (captioned, uncaptioned Revit, vertical strips) vary by engineer; when the estimator reports a wrong or missing title, add that layout as a test in `sheetNumber.test.ts`.
 - **At a low threshold the symbol engine accepts one symbol under two turns.** Always pass finds through `collapseFinds` (`sweepReview.js`); it took a 2-page test from 9 to 17 before it existed.
+- **Never run the symbol engine or label reading on the page for a whole sheet.** Search goes through `symOn` (the worker); `labelPlacements`' leader chase once froze a real E sheet for minutes until it was bounded (`LEADER_MAX_FRONTIER`, `LEADER_TOKEN_REACH_PX`).
+- **Legend-to-plan matching is weak; plan-seeded matching is strong.** Legend symbols are clean, plan copies are crowded. Fills aren't in fingerprints yet, so solid and open variants confuse each other.
 - **OCR on ruled tables needs help** (erase the rules, read per-column strips, a single-line second look on gray, circuit numbers as a grid). Whole-region Tesseract is mostly garbage. Each new panel-schedule template can fail at the header: test real sheets from different engineers.
 - **`mcp/` dependencies aren't installed** in this checkout. For an MCP edit, syntax-check with esbuild and follow AGENTS.md's doc-sync list. The Wave 1 `mcp/src/session.ts` mirrors only `PALETTE`.
 
@@ -137,8 +141,9 @@ Selectors that took effort to find:
 | | |
 |---|---|
 | Merged to `main` | #3 Waves 2 and 3.1 · #4 panel schedule import · #5 `OCP SIZE` / no-POLES templates and two OCR fixes · #6 raceway builder (conduit and MC cable, line `mult` and `waste_pct`) · #7 tool chest, starter devices, Est. code column, this handbook · #8 item list, `Space` search, items arm their tool, run points / adders / `G` jumps, "number - title" sheet names, autocount options + breakout areas |
-| Next up | Legend-driven autocount (needs the vector legend page — the two legends sent were screenshots), then scale areas, addendum versions + overlay, toolbar cleanup |
-| Tests | 1772 (3 skipped), all passing under `npm run check` |
+| On the branch, not yet a PR | Legend autocount v1, background symbol search, the label-reading freeze fix, more sheet-number formats (branch `ccr-e8c0892e-w7l1b4`) |
+| Next up | Fill-aware symbol matching (Emergency vs Normal), then scale areas, addendum versions + overlay, toolbar cleanup |
+| Tests | 1778 (3 skipped), all passing under `npm run check` |
 | Waiting on the estimator | Whether counted points should feed a separate count item and whether `Space` while counting should do anything but search; ConEst access and item names; confirmation that "SW duplex" means switched; their own device list (candela variants, fixture types); whether conduit lengths should carry waste; whether projects must be shared between estimators |
 
 ## 9. Session start checklist

@@ -496,6 +496,19 @@ Count every copy of a device symbol in one pass.
 
 One symbol counts once even when it reads two ways (a receptacle that looks the same turned 0° and 180°). The Symbol tool reads drawn linework, so a scanned sheet can't be autocounted: *"This sheet has no vector linework (likely a scan)."* Count it with `C`.
 
+### Legend autocount—a step in the estimate
+
+Count every device in the project's symbol legend, one item at a time, on one discipline's sheets.
+
+1. Open the legend sheet (it must be the real PDF page, not a screenshot) and click **+ legend** at the bottom of the item list.
+2. Box the legend: click one corner, then the opposite corner. Box a whole legend or one section of it.
+3. **Review the legend.** Every row the app read is listed with its drawn symbol, a name (editable), the description and its section. A row with an **Emergency** and a **Normal** symbol is two items. Each row is suggested as **Count** (a device), **Run** (conduit, raceway, home run—added as a Linear item to trace with `L`), or **Skip** (abbreviations, one-line and riser symbols, notes, callouts, letter codes like *G = GFCI*); change any of them. **Count on** picks the discipline—sheets whose number starts with *E*, *FA*, *T*…—read from each sheet's title block. Tick what to take off and click **Create N items and start counting**.
+4. **One item at a time.** The panel shows the item's legend symbol and the best copy it found on those sheets, ringed on the plan. Press `⏎` (**Use this copy**) if that's the device, or **Box it myself (Y)** to box the right one. The usual autocount window opens (turned and mirrored copies, threshold, breakout areas), already set to **All pages**—the discipline's sheets only. Review, **Commit**, and the next item comes up. **Skip** moves on; **Stop** ends the walk and keeps the items.
+
+The search runs in the background, so the plan stays usable while it works.
+
+**Honest limits.** A legend symbol is drawn clean; the same symbol on a plan sits under mounting heights and walls, which is why each item starts from a plan copy you confirm. The symbol search reads lines, not fills, so a **solid (filled) symbol and an open one look nearly alike**—an Emergency and a Normal receptacle can be proposed for each other. Check the ringed copy before you press `⏎`, and untick wrong finds during review.
+
 ### Breakout areas (`B`)
 
 Breakout areas split a count by where things are: *Area A*, *Level 2 North*, *Phase 1*. Press `B` (or **Breakout areas** on the rail), trace the region, press `⏎`, and name it. Areas show as dashed violet outlines with their name. Each name joins the job's shape labels (§7), so a count committed **by breakout area** carries the name of the area it sits in, and the Report's **Group: Label** totals each area. A count outside every area has no label. Remove an area with ✕ in the Symbol window's area list.
