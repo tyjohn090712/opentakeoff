@@ -102,7 +102,9 @@ export const STANDARD_SCALES: Scale[] = [
 
 // Pull the drawing's sheet number (e.g. A003, A-101, S1.1) from the title block —
 // the largest sheet-number-shaped token in the lower-right region of the page.
-const SHEET_NO_RE = /^[A-Z]{1,3}[-. ]?\d{1,3}(\.\d{1,2})?[A-Z]?$/;
+const SHEET_NO_RE = /^[A-Z]{1,3}\d?[-. ]?\d{1,4}(\.\d{1,2})?[A-Z]?$/;   // E101, A-101, EI312.09, E0-000
+// project-prefixed sheet numbers: EAT06-E-E-142-4, PRJ1-E-101 — a project token, then 2–4 short tokens, the last numeric
+const PROJECT_SHEET_NO_RE = /^[A-Z]{2,6}\d{0,4}(-[A-Z0-9]{1,5}){1,3}-\d{1,4}$/;
 export function extractSheetNumber(textContent: TextContentLike, viewport: Viewport): string | null {
   return extractSheetInfo(textContent, viewport).number;
 }
@@ -144,7 +146,12 @@ export function extractSheetInfo(textContent: TextContentLike, viewport: Viewpor
 
   let best: string | null = null, bestScore = 0, bestAt: { x: number; y: number; h: number } | null = null;
   const consider = (raw: string, x: number, y: number, h: number) => {
-    if (raw.length < 2 || raw.length > 8 || !SHEET_NO_RE.test(raw)) return;
+    // a plain number (E101, A-101, EI312.09), or a project-prefixed one
+    // (EAT06-E-E-142-4) — the latter only in the big type of the sheet number
+    // itself, so a small equipment tag in the title block never wins
+    const plain = raw.length >= 2 && raw.length <= 9 && SHEET_NO_RE.test(raw);
+    const project = raw.length <= 22 && PROJECT_SHEET_NO_RE.test(raw) && h >= 14;
+    if (!plain && !project) return;
     const score = h + (x / W) * 4 + (y / H) * 4; // bigger + further to lower-right wins
     if (score > bestScore) { bestScore = score; best = raw; bestAt = { x, y, h }; }
   };
@@ -179,7 +186,7 @@ export function extractSheetInfo(textContent: TextContentLike, viewport: Viewpor
 }
 
 // ── sheet title ──────────────────────────────────────────────────────────────
-const TITLE_LABEL_RE = /^(SHEET|DRAWING|DWG\.?)\s*(TITLE|NAME)\s*:?\s*|^TITLE\s*:\s*|^TITLE\s*$/i;
+const TITLE_LABEL_RE = /^(SHEET|DRAWING|DWG\.?)\s*(TITLE|NAME)(\s*\/\s*(NUMBER|NO\.?))?\s*:?\s*|^TITLE\s*:\s*|^TITLE\s*$/i;
 // words a drawing title is made of; one is required for an unlabeled title
 const TITLE_WORD_RE = /\b(PLANS?|SCHEDULES?|DETAILS?|ELEVATIONS?|SECTIONS?|DIAGRAMS?|RISERS?|LEGENDS?|NOTES|SPECIFICATIONS|COVER|INDEX|SYMBOLS|ABBREVIATIONS|CALCULATIONS|LAYOUTS?|ONE[- ]LINE|SINGLE[- ]LINE|PHOTOMETRICS?|SITE|DEMOLITION|DEMO|ENLARGED|LIGHTING|POWER|SYSTEMS|SIGNAL|FIRE ALARM|TELECOM\w*|GROUNDING|ROOF|FLOOR|LEVEL)\b/i;
 // other title-block captions — a labeled title stops at the next one
@@ -242,7 +249,7 @@ const tidy = (t: string) => t.replace(/\s+/g, " ").replace(/^[\s:–—-]+|[\s:�
 function withWrap(lines: Line[], first: Line, accept: (l: Line) => boolean): string {
   const parts = [first.text];
   let at = first;
-  for (let k = 0; k < 2; k++) {
+  for (let k = 0; k < 3; k++) {   // titles wrap onto up to four lines ("SILVER / ELECTRICAL / SYMBOLS AND / ABBREVIATIONS")
     const next = lines.find((l) => l !== at && l.y > at.y && l.y - at.y <= at.h * 2.2 && Math.abs(l.h - at.h) <= at.h * 0.2
       && l.x < at.x2 && l.x2 > at.x && accept(l));
     if (!next) break;
@@ -255,8 +262,11 @@ function sheetTitleNear(textContent: TextContentLike, viewport: Viewport, vscale
   const lines = titleBlockLines(textContent, viewport, vscale);
   if (!lines.length) return null;
   const isNumber = (l: Line) => SHEET_NO_RE.test(l.text.toUpperCase().replace(/\s+/g, ""));
-  // 1. labeled
-  for (const lab of lines) {
+  // 1. labeled — the caption nearest the sheet number first (a drawing index
+  // on the same sheet has its own "DRAWING NAME" column header)
+  const W0 = viewport.width, H0 = viewport.height;
+  const near = (l: Line) => (numAt ? Math.hypot((l.x - numAt.x) / W0, (l.y - numAt.y) / H0) : 0);
+  for (const lab of [...lines].sort((a, b) => near(a) - near(b))) {
     const m = lab.text.match(TITLE_LABEL_RE);
     if (!m) continue;
     const rest = tidy(lab.text.slice(m[0].length));
